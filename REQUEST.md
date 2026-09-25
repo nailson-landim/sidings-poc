@@ -1,18 +1,13 @@
-## Original Request - pretty okay implemented
+Given that we have an starter app on RealityKit, I would like to start a new SPEC document, please make all development into a single file.
 
-At ARKit_WallDetection we have a small ARKit PoC app which manages to get ARPlanes. It does show their dimension and draw them as seen at @AR_APP.png
+ARKit_WallDetection app does detect planes and show me, incl some filtering, giving a sense of what RealityKit actually CAN see. For LiDAR devices on what I aim at @CONSOLIDATION.md is okay, passable and limited. But for non-Lidar devices isn't. I need somehow that rough plane fitting, ML speaking, apple seems to prefer precision than recall. I need to "recalibrate" it to recall. But we gonna need tools and that's all this pre-SPEC about.
 
-First I would like to fix a few things on that, which are:
+ARFeaturePointFindSurface is another app, which goes beyond, using an averaging to "keep" point cloud between frames captured, That seems promissing to aid fit a plane, which seems to happen but is flickery. I Would like to have something more like the ARKit_WallDetection does by using ARKit delegates, whcih is to keep the fitted planes and MAYBE updating its extent and position + rotation.
 
-- Investigate the available delegates related to the ARPlanes and Anchors. As seen at the image, it shows some dirtyness, lots of coliding planes, and also by the way ARPlanes anchors works on ARKit, it performs great only on LiDAR phones. I Would like to implement the missing ones and have a proper updating techinique, with a nearby most elegible algorithm (I Just forgot the name)
-- Add Horizontal planes to it, also with proper updating/"averaging".
-- Add a toggle for LiDAR devices enabling/disabling it, resseting the session on each change.
-- Devise a way to show a geometry, maybe a small noticeable Magenta Ball showing the Anchors points
+I think on a way to aid such task, by capturing the point cloud data + camera pose + image frames identified by the frame number, in real time in ARKit_WallDetection app, by persisting on storage on the fly so I could do each of those tasks async on each frame, then after finishing the session (I would need a start/stop button) I would recompute it so I could analyze them on Blender 3D.
 
-The @CONSOLIDATION.md would be much more for the general plan. I would like to quickly validate what I can do on ARKit natively and start expanding from it.
+At Blender 3D I was thinking on a plugin, that could directly ingest that file and present me, as blender has frame control on animation that would MAYBE allow me making a timeline pass over that, also running a plane fitting too, so I could check it changing along the time.
 
-## Request 2 - Smaller adjustments
+So after all, I need to make a lab, combining the ARKit_WallDetection app and a Blender plugin.
 
-The app does quite what I need, the NMS I didn't checked at code level, it seems to give a small improvement. Anyhow I miss the current points as debugging.
-
-The most concerning part was actually RAM usage, it went to the roof, maybe because of the many shapes and items. Lets reduce it to be more memory-savvy, for now.
+Lets brainstorm a SPEC so we reach a more solid idea

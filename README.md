@@ -9,9 +9,12 @@ Read [`CONSOLIDATION.md`](CONSOLIDATION.md) first. It holds the product framing,
 | Path | What it is |
 |---|---|
 | [`CONSOLIDATION.md`](CONSOLIDATION.md) | Living project summary: product, decisions, VIO notes, geometry architecture, MoE model, capture UX, first spike, evaluation, open questions |
-| [`REQUEST.md`](REQUEST.md) | The running request log for this repo (Original Request, Request 2, …). New work starts here. |
+| [`REQUEST.md`](REQUEST.md) | The current request. Earlier ones are in [`docs/REQUEST_1.md`](docs/REQUEST_1.md). |
+| [`SPEC.md`](SPEC.md) | **Plane Lab** spec (draft): record ARKit sessions in SidingsAR, then replay them and fit planes on the Mac in Python and Blender. The plan and tasks will go in the same file. |
 | [`ARKit_WallDetection/`](ARKit_WallDetection/) | **SidingsAR**, an iOS app that validates what native ARKit plane detection gives us. See its [README](ARKit_WallDetection/README.md). |
+| [`ARFeaturePointFindSurface/`](ARFeaturePointFindSurface/) | CurvSurf's feature-point surface-fitting demo (upstream clone, reference only). Our notes are in its [`CLAUDE.md`](ARFeaturePointFindSurface/CLAUDE.md). |
 | `AR_APP.PNG` | A screenshot of the original tutorial app: the "dirty" baseline that motivated the rewrite |
+| `BUILDING_SAMPLE.png` | ARFeaturePointFindSurface outdoors on an iPhone 13 (no LiDAR): 3,533 averaged points, including some 8–10 m up a building. It's the working example the Plane Lab should reproduce (see [`SPEC.md`](SPEC.md) §1). |
 
 The research brief referenced by `CONSOLIDATION.md` (`research/01-landscape-brief-and-vio-handoff.md`) isn't in this repo.
 

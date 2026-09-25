@@ -132,6 +132,16 @@ A simple regressor trained on ground-truth houses outputs ±X%. **The validation
 
 `ARKit_WallDetection/` now holds **SidingsAR**, a RealityKit app that shows native `ARPlaneAnchor` output (vertical + horizontal, classification) with NMS de-duplication, EMA/hysteresis smoothing and magenta anchor markers. The goal is to see what ARKit gives us for free before custom RANSAC. The user tested it on device on Sep 25, 2026 and called it "a great starter". The v2.1 memory pass is in, and it adds a live memory readout to the HUD. Numbers (memory, LiDAR vs. non-LiDAR, usable range) are still pending; see `ARKit_WallDetection/README.md` → Findings.
 
+**Feature points on a non-LiDAR phone outdoors** (Sep 25, 2026, `BUILDING_SAMPLE.png`):
+- **Setup:** CurvSurf's ARFeaturePointFindSurface demo on an iPhone 13, in sun. The user stood less than 5 m from the building and looked up.
+- **Result:** 3,533 averaged `rawFeaturePoints`, including points about 8–10 m up the wall. Collecting them was slow.
+- **Where the points land:** almost all on edges and texture: corners, the parapet, the trim band, window frames and grilles. The plain plaster faces got almost none.
+- **What it means:**
+  - A wall is seen through its outline, not its face.
+  - Plane fitting has to handle collinear edge points and corners shared by two walls.
+  - This is consistent with the lap-siding texture concerns in §4.
+- **What it doesn't answer:** every point is within about 10 m of the camera, so it doesn't test the claimed ~65 m range at the 8–15 m standoff. That's experiment E1 in `SPEC.md`.
+
 ## 11. Document index
 
 - `00-consolidation.md` (this file): current state, decisions, plan

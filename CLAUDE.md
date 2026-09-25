@@ -5,9 +5,11 @@ Proofs of concept for the Siding Scanner. `README.md` has the repo map; `CONSOLI
 ## Orientation
 
 - **`CONSOLIDATION.md`** is the source of truth for decisions (D1–D7) and open questions. Don't contradict a decided item without flagging it. Add new native-ARKit findings to §10b.
-- **`REQUEST.md`** is the request log. "Execute Request N" means the section `## Request N` in this file. Earlier sections are history; don't rework them unless asked.
+- **`REQUEST.md`** holds the current request. Earlier requests (Original Request, Request 2) are archived in `docs/REQUEST_1.md`; they're history, so don't rework them unless asked.
+- **`SPEC.md`** is the single file for the **Plane Lab** (SidingsAR recorder + Python core + Blender extension): spec, then plan (§17) and tasks (§18). For this work it replaces `tasks/plan.md` and `tasks/todo.md`. Don't write code for it until the spec phase is approved.
+- **`ARFeaturePointFindSurface/`** is an upstream clone of CurvSurf's feature-point app, used as a reference. It has its own nested `.git`; see its `CLAUDE.md` for local patches and findings.
 - **`ARKit_WallDetection/`** holds the only code so far: the SidingsAR iOS app plus the `PlaneKit` Swift package. Its own `CLAUDE.md` has the build and test commands, architecture invariants and memory rules. Follow it for any app change.
-- `AR_APP.PNG` is the baseline screenshot. `ARKit_WallDetection/legacy/` is the 2018 tutorial, kept for reference only.
+- `AR_APP.PNG` is the baseline screenshot. `BUILDING_SAMPLE.png` is the outdoor feature-point example the Plane Lab should reproduce (`SPEC.md` §1, *Reference assets*). `ARKit_WallDetection/legacy/` is the 2018 tutorial, kept for reference only.
 
 ## Workflow expectations
 
