@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+ <defs>
+  <filter height="1000%" id="shadow2" width="1000%" x="-500%" y="-500%">
+   <feGaussianBlur in="SourceAlpha" stdDeviation="18.000000"/>
+   <feOffset dx="0" dy="-8" result="offsetblur"/>
+   <feFlood flood-color="rgb(0,0,0)" flood-opacity="0.35"/>
+   <feComposite in2="offsetblur" operator="in"/>
+   <feMerge>
+    <feMergeNode/>
+    <feMergeNode in="SourceGraphic"/>
+   </feMerge>
+  </filter>
+  <filter height="1000%" id="shadow2_flipped" width="1000%" x="-500%" y="-500%">
+   <feGaussianBlur in="SourceAlpha" stdDeviation="18.000000"/>
+   <feOffset dx="0" dy="8" result="offsetblur"/>
+   <feFlood flood-color="rgb(0,0,0)" flood-opacity="0.35"/>
+   <feComposite in2="offsetblur" operator="in"/>
+   <feMerge>
+    <feMergeNode/>
+    <feMergeNode in="SourceGraphic"/>
+   </feMerge>
+  </filter>
+ </defs>
+ <path d="M654.94,135.12 l43.27,0 l0,52.15 l54.5,0 l0,32.45 l-54.5,0 l0,28.37 l60.21,0 l0,34.29 l-103.48,0 Z M773.72,135.12 l43.27,0 l0,40.21 l22.55,0 c34.49,0,56.23,20.51,56.23,53.17 l0,0.2 c0,32.66,-21.74,53.68,-56.23,53.68 l-65.82,0 Z M829.24,249.83 c14.29,0,22.86,-7.04,22.86,-21.12 l0,-0.2 c0,-14.08,-8.57,-21.23,-22.86,-21.23 l-12.25,0 l0,42.56 Z M829.24,249.83" fill="rgb(255,255,255)" filter="url(#shadow2)" transform="matrix(1,0,0,-1,0,1024)"/>
+ <path d="M654.94,135.12 l43.27,0 l0,52.15 l54.5,0 l0,32.45 l-54.5,0 l0,28.37 l60.21,0 l0,34.29 l-103.48,0 Z M773.72,135.12 l43.27,0 l0,40.21 l22.55,0 c34.49,0,56.23,20.51,56.23,53.17 l0,0.2 c0,32.66,-21.74,53.68,-56.23,53.68 l-65.82,0 Z M829.24,249.83 c14.29,0,22.86,-7.04,22.86,-21.12 l0,-0.2 c0,-14.08,-8.57,-21.23,-22.86,-21.23 l-12.25,0 l0,42.56 Z M829.24,249.83" fill="none" stroke="rgb(0,0,0)" stroke-linejoin="round" stroke-opacity="0.55" stroke-width="36" transform="matrix(1,0,0,-1,0,1024)"/>
+ <path d="M654.94,135.12 l43.27,0 l0,52.15 l54.5,0 l0,32.45 l-54.5,0 l0,28.37 l60.21,0 l0,34.29 l-103.48,0 Z M773.72,135.12 l43.27,0 l0,40.21 l22.55,0 c34.49,0,56.23,20.51,56.23,53.17 l0,0.2 c0,32.66,-21.74,53.68,-56.23,53.68 l-65.82,0 Z M829.24,249.83 c14.29,0,22.86,-7.04,22.86,-21.12 l0,-0.2 c0,-14.08,-8.57,-21.23,-22.86,-21.23 l-12.25,0 l0,42.56 Z M829.24,249.83" fill="rgb(255,255,255)" transform="matrix(1,0,0,-1,0,1024)"/>
+</svg>
