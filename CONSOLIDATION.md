@@ -130,7 +130,7 @@ A simple regressor trained on ground-truth houses outputs ±X%. **The validation
 
 ## 10b. Native ARKit spike (Sep 25, 2026)
 
-`ARKit_WallDetection/` now holds **SidingsAR**, a RealityKit app that shows native `ARPlaneAnchor` output (vertical + horizontal, classification) with NMS de-duplication, EMA/hysteresis smoothing and magenta anchor markers. The goal is to see what ARKit gives us for free before custom RANSAC. Device findings (LiDAR vs. non-LiDAR, range) are pending; see its README.
+`ARKit_WallDetection/` now holds **SidingsAR**, a RealityKit app that shows native `ARPlaneAnchor` output (vertical + horizontal, classification) with NMS de-duplication, EMA/hysteresis smoothing and magenta anchor markers. The goal is to see what ARKit gives us for free before custom RANSAC. The user tested it on device on Sep 25, 2026 and called it "a great starter". The v2.1 memory pass is in, and it adds a live memory readout to the HUD. Numbers (memory, LiDAR vs. non-LiDAR, usable range) are still pending; see `ARKit_WallDetection/README.md` → Findings.
 
 ## 11. Document index
 
