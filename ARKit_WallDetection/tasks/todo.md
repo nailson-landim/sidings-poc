@@ -1,0 +1,297 @@
+# TODO: ARKit Plane PoC v2 (RealityKit)
+
+> **Status 2026-09-25:** v2.1 was tested on device by the user ("a great starter"). The individual device checks below remain unticked until they're confirmed one by one.
+>
+> **Earlier status:** T1–T8 are implemented. `swift test` passes (27 tests) and the xcodebuild build succeeds. **Still open:** all manual on-device checks (screenshots, FPS, flicker, LiDAR vs. non-LiDAR notes). Tick them here as you verify.
+
+See `tasks/plan.md` for the design decisions. Paths below are relative to `ARKit_WallDetection/`.
+
+Commands:
+- Unit tests: `cd PlaneKit && swift test`
+- Build: `xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR -destination 'generic/platform=iOS' build`
+- Manual checks: run on device from Xcode (LiDAR phone + non-LiDAR phone)
+
+---
+
+## Phase 1: Foundation
+
+## Task 1: RealityKit skeleton with correct vertical planes and full lifecycle
+
+**Description:** Create a new Xcode 26 iOS app `SidingsAR` (SwiftUI, iOS 18, Swift 6, synchronized folder group). Move the old project to `legacy/`. Show an `ARView` in a `UIViewRepresentable` and run `ARWorldTrackingConfiguration` with `planeDetection = [.vertical]`. An `ARSessionDelegate` coordinator handles `didAdd`, `didUpdate` and `didRemove`. Each `ARPlaneAnchor` gets an `AnchorEntity(anchor:)` holding a semi-transparent mesh built from `ARPlaneGeometry` (boundary polygon via `MeshDescriptor`) and a text label (`planeExtent` width × height in inches plus ft²). This replaces the tutorial app and fixes the double-offset and rotation bugs.
+
+**Acceptance criteria:**
+- [ ] Plane meshes sit flush on real walls, with no drift as they grow and no skew (they use the boundary polygon, not the rectangle)
+- [ ] When ARKit merges planes (`didRemove`), the absorbed plane's entity disappears and the entity dictionary count equals the live anchor count
+- [ ] The label faces the camera (billboard) and shows `W" × H"  (A ft²)`
+
+**Verification:**
+- [ ] Build succeeds (xcodebuild command above)
+- [ ] Manual: point at the same door/wall as `../AR_APP.PNG`; take a screenshot for comparison
+
+**Dependencies:** None
+
+**Files likely touched:** `SidingsAR/SidingsARApp.swift`, `SidingsAR/ARViewContainer.swift`, `SidingsAR/PlaneRenderer.swift`, `SidingsAR/Info.plist` (camera usage), `legacy/` (moved)
+
+**Estimated scope:** M
+
+---
+
+## Task 2: `PlaneKit` package: `PlaneObservation` + polygon math + tests
+
+**Description:** A local Swift package with no ARKit imports (only `simd`), so it's testable on the Mac. It contains:
+- `PlaneObservation` (a `Sendable` struct): id, alignment, classification, world transform, center, width, height, yaw, world-space boundary polygon, firstSeen, updateCount
+- geometry helpers: plane normal, point-to-plane distance, angle between normals, projecting a polygon onto a plane, polygon area, polygon intersection area (Sutherland–Hodgman clipping on convex hulls)
+
+The app adds an `ARPlaneAnchor → PlaneObservation` adapter.
+
+**Acceptance criteria:**
+- [ ] `PlaneKit` is linked into the app; the adapter compiles
+- [ ] Unit tests cover area, overlap (none, partial, containment), normal angle and plane distance
+
+**Verification:**
+- [ ] `swift test` is green; tests are persisted under `PlaneKit/Tests/PlaneKitTests/`
+- [ ] App build succeeds
+
+**Dependencies:** T1
+
+**Files likely touched:** `PlaneKit/Package.swift`, `PlaneKit/Sources/PlaneKit/PlaneObservation.swift`, `PlaneKit/Sources/PlaneKit/PolygonMath.swift`, `PlaneKit/Tests/PlaneKitTests/PolygonMathTests.swift`, `SidingsAR/PlaneAnchorAdapter.swift`
+
+**Estimated scope:** M
+
+### Checkpoint A
+- [ ] App builds and runs on device; walls line up with the real walls
+- [ ] `swift test` passes
+- [ ] Human review before Phase 2
+
+---
+
+## Phase 2: Core features
+
+## Task 3: Magenta anchor markers
+
+**Description:** Add magenta `UnlitMaterial` spheres as children of each plane's entity:
+- the **anchor origin** (radius 2 cm)
+- the **plane center**, `planeExtent`/`center` (1.2 cm)
+- each **boundary vertex** (0.5 cm)
+
+Update them on `didUpdate`, reusing the sphere entities from a pool. A HUD toggle turns markers on and off.
+
+**Acceptance criteria:**
+- [ ] All three marker kinds are visible and follow the plane as it grows
+- [ ] The origin stays fixed while the center moves as the plane extends. This shows the difference visually.
+- [ ] With markers on, FPS stays at 60 or above with 10 planes; boundary spheres are capped at 64 per plane
+
+**Verification:**
+- [ ] Build succeeds
+- [ ] Manual: screenshot with markers on
+
+**Dependencies:** T1
+
+**Files likely touched:** `SidingsAR/AnchorMarkers.swift`, `SidingsAR/PlaneRenderer.swift`, `SidingsAR/HUDView.swift`
+
+**Estimated scope:** S
+
+---
+
+## Task 4: Horizontal planes + classification
+
+**Description:** Set `planeDetection = [.horizontal, .vertical]`. Color each plane by alignment and `ARPlaneAnchor.classification`: wall cyan, floor green, ceiling yellow, table/seat orange, door/window purple, none white. Add the classification name to the label. A HUD segmented control switches between vertical, horizontal and both; each change re-runs the session with `.resetTracking, .removeExistingAnchors`.
+
+**Acceptance criteria:**
+- [ ] Floor and table planes render flat with correct dimensions
+- [ ] Classification appears in the label and color, and falls back to white on unsupported devices
+- [ ] Switching the filter resets the session cleanly (no orphan entities)
+
+**Verification:**
+- [ ] Build succeeds
+- [ ] Manual: a room scan shows the floor plus at least 1 wall plus a table, each with its classification
+
+**Dependencies:** T1
+
+**Files likely touched:** `SidingsAR/ARViewContainer.swift`, `SidingsAR/PlaneRenderer.swift`, `SidingsAR/PlaneStyle.swift`, `SidingsAR/HUDView.swift`
+
+**Estimated scope:** S
+
+---
+
+## Task 5: Non-Maximum Suppression
+
+**Description:** In `PlaneKit`, add `PlaneTrackerConfig` (angle 10°, distance 8 cm, overlap 0.3, min age) and `PlaneTracker.resolve([PlaneObservation]) -> [UUID: PlaneState]`. It groups planes by alignment, scores each one as area × stability, and runs greedy NMS using the conflict rule from `plan.md`. The app runs `resolve` after every anchor batch. Suppressed planes are dimmed to 15% opacity, or hidden via the HUD toggle. The HUD shows `raw N / kept M`.
+
+**Acceptance criteria:**
+- [ ] Unit tests: two coplanar overlapping planes → 1 kept; a perpendicular pair → 2 kept; parallel planes 30 cm apart → 2 kept; floor vs. table (horizontal, different height) → 2 kept
+- [ ] On device, in the `AR_APP.PNG` scene, stacked labels and overlapping grids are gone
+- [ ] `resolve` takes under 1 ms for 50 planes (measured in a test)
+
+**Verification:**
+- [ ] `swift test` is green
+- [ ] Build succeeds; manual before/after screenshots
+
+**Dependencies:** T2 (T4 for the horizontal cases)
+
+**Files likely touched:** `PlaneKit/Sources/PlaneKit/PlaneTracker.swift`, `PlaneKit/Tests/PlaneKitTests/NMSTests.swift`, `SidingsAR/PlaneRenderer.swift`, `SidingsAR/HUDView.swift`
+
+**Estimated scope:** M
+
+---
+
+## Task 6: EMA smoothing + winner hysteresis
+
+**Description:** Extend `PlaneTracker`:
+- keep an EMA (α configurable, default 0.3) of the rendered center, extent and yaw per anchor, reset on a jump larger than 20 cm (relocalization)
+- **hysteresis**: the current NMS winner keeps winning until a challenger's score is more than 1.2× for 5 consecutive resolves
+
+The renderer uses the smoothed values for the label and marker positions. The raw mesh stays true to ARKit.
+
+**Acceptance criteria:**
+- [ ] Unit tests: the EMA converges; a jump resets it; the winner doesn't flip on alternating ±5% scores; the winner does switch on a sustained +30%
+- [ ] On device, labels and suppressed/visible states don't flicker while you hold the phone still
+
+**Verification:**
+- [ ] `swift test` is green
+- [ ] Manual: a 10 s screen recording held still, with no visible flicker
+
+**Dependencies:** T5
+
+**Files likely touched:** `PlaneKit/Sources/PlaneKit/PlaneTracker.swift`, `PlaneKit/Sources/PlaneKit/Smoothing.swift`, `PlaneKit/Tests/PlaneKitTests/SmoothingTests.swift`, `SidingsAR/PlaneRenderer.swift`
+
+**Estimated scope:** S–M
+
+### Checkpoint B
+- [ ] All tests pass, build clean
+- [ ] In the `AR_APP.PNG` room: visible planes ≤ real surfaces + 1
+- [ ] Same scan on a LiDAR and a non-LiDAR phone; screenshots and notes captured
+- [ ] Human review before Phase 3
+
+---
+
+## Phase 3: Polish
+
+## Task 7: Session/tracking delegates, coaching overlay, HUD, reset
+
+**Description:** Implement the rest of the delegate audit in `plan.md`:
+- `cameraDidChangeTrackingState` → HUD banner with the reason
+- interruption begin/end → banner and a reset prompt
+- `sessionShouldAttemptRelocalization` → true
+- `didFailWithError` → logged with `os.Logger` and shown in an alert
+- a `didUpdate frame` tick throttled to 10 Hz for the HUD (feature point count, tracking state)
+- `ARCoachingOverlayView` with goal `.anyPlane`
+- a Reset button
+
+**Acceptance criteria:**
+- [ ] Covering the camera shows "Limited: insufficient features"; shaking the phone shows "excessive motion"
+- [ ] Backgrounding and foregrounding the app shows the interruption banner and relocalizes or offers a reset
+- [ ] Reset clears all entities and tracker state
+
+**Verification:**
+- [ ] Build succeeds; manual checks above
+
+**Dependencies:** T1
+
+**Files likely touched:** `SidingsAR/ARViewContainer.swift`, `SidingsAR/HUDView.swift`, `SidingsAR/SessionStatus.swift`
+
+**Estimated scope:** S–M
+
+---
+
+## Task 8: Documentation
+
+**Description:** Update `README.md` (how to run, architecture, NMS/EMA parameters, LiDAR vs. non-LiDAR findings, and a before/after screenshot) and create `CLAUDE.md` (build and test commands, layout, conventions). Update `../CONSOLIDATION.md` §10 with what native ARKit can and can't do.
+
+**Acceptance criteria:**
+- [ ] A fresh reader can build, test and run the app from the README alone
+- [ ] Device findings are recorded
+
+**Verification:**
+- [ ] Manual read-through
+
+**Dependencies:** T1–T7
+
+**Files likely touched:** `README.md`, `CLAUDE.md`, `../CONSOLIDATION.md`
+
+**Estimated scope:** S
+
+### Checkpoint C
+- [ ] All acceptance criteria met
+- [ ] Findings documented; ready for review
+
+---
+
+## Request 2 (2026-09-25): debug points + memory
+
+- [x] R2.1: Bring back ARKit feature points (`ARView.debugOptions.showFeaturePoints`, on by default). Add a Debug menu (points, markers, hide duplicates, render stats)
+- [x] R2.2: Show process memory (`phys_footprint`) in the HUD at 1 Hz
+- [x] R2.3: Replace 3D text labels with UIKit screen-space labels
+- [x] R2.4: Bake boundary markers into one mesh per plane; no markers or labels for suppressed planes
+- [x] R2.5: Fill meshes updated in place (`replace(with:)`), gated by `RebuildGate` (4 Hz visible / 1 Hz suppressed), materials cached
+- [x] R2.6: Anchor callbacks only mark dirty; a 10 Hz frame tick resolves and renders changed planes
+- [x] R2.7: Disable unused ARView post-processing
+- [x] Tests: `RenderBudgetTests` (Throttle, RebuildGate, PointMarkerMesh); `swift test` 36/36, build clean
+
+### Checkpoint R2 (device)
+- [ ] Same room as `AR_APP.PNG`, ~1 min scan: HUD "mem MB" stays flat instead of climbing. Record the number in the README
+- [ ] Feature points visible; the toggle works
+- [ ] Labels follow planes smoothly while moving; no labels on dimmed duplicates
+- [ ] Boundary markers appear on a plane that wins NMS later
+
+---
+
+## Experiment X1 (2026-10-01): FindSurface + tracking, live
+
+Branch `exp/x1-findsurface-live`. Design, measures and decisions are in `../EXPERIMENTS.md`.
+
+- [x] X1.1: PlaneKit `Surfaces/`. `SurfaceFitter` protocol, `SurfaceSettings`, seed picking (flattest unclaimed grid cells first, range-scaled radius), `SurfaceTracker` (match by shared inlier ids plus normal and distance gates, EMA, tentative → confirmed, merge where the older id survives, stale, events), and `SurfaceScanner` rounds (re-seed tracks, then discover).
+  - Acceptance: with a stand-in least-squares fitter on synthetic walls (2 cm noise), each wall keeps one id over 50 rounds of jitter; two walls at a corner give two planes about 90° apart; a recess 10 cm behind stays separate and one 5 cm behind merges; a plane out of view goes stale, not deleted. `swift test` green.
+- [x] X1.2: SidingsAR. FindSurface-iOS through SPM; a `FindSurfaceFitter` adapter on the raw `FindSurfaceFramework` context (upload once per round); `LiveSurfaces` on its own queue fed from the live cloud; a `SurfaceRenderer` (one `DynamicMesh` per track, colored by id, tentative lighter, stale grey, labels W × H and RMS); a Debug toggle; HUD readouts for planes and fit ms.
+  - Acceptance: the compile check is clean with no new warnings, and `swift test` is still green.
+
+- [x] X1.3: Record X1 (schema v3 `surface` table, `x1.*` meta) and replay it in Plane Lab: reader, `SurfaceTimeline`, `info`, `peek`, and the Blender *X1 FindSurface planes* layer.
+  - Acceptance: v3 contract fixture on both sides (v1 and v2 still read); recorded rows replay to the final tracks (Swift); the headless Blender test matches every frame. `swift test`, the compile check, ruff, pytest (≥ 85 %) and the Blender suite are green.
+
+- [x] X1.4: v2 defaults (mean distance 1.0 m, lateral extension 7, seed radius max 6 m, keep band 0.15 m), live *Debug › X1 dials* with `x1_dial` events, and the tracker's merge gap with the mean-normal coplanar test (`../EXPERIMENTS.md` *X1 dials*, XD8–XD10).
+  - Acceptance: coplanar patches 0.4 m apart join and ones 1.5 m apart don't; settings apply live and keep the tracks; `swift test` (163) and the compile check pass.
+
+### Checkpoint X1 (device, user)
+- [ ] Indoors, ~1 min: every wall in view gets one plane that stays put and grows. No visible flicker. HUD fps stays at about 60. Note *mem MB* with X1 on and off.
+- [ ] A corner gives two planes; a door or window recess stays separate (if one is at hand).
+- [ ] Outdoors at the T24 building, 8–15 m: which walls are found, ids stable, fit ms per round.
+- [ ] Record a session with X1 on, pull it (`pull.sh`), and check that `planelab info` has an `x1` line and that Blender's *X1 FindSurface planes* layer replays what the phone showed.
+- [ ] **X1 dials at the facade** (protocol in `../EXPERIMENTS.md`, *X1 dials*): with v2, does the wall reach its real edges? Then one dial at a time with Restart X1 and Mark; note the wall's W × H, RMS and fit ms per setting. The best set becomes v3.
+
+---
+
+## Experiment X2 (2026-10-02): RANSAC live, with timings
+
+Branch `exp/x2-ransac` (finished but not merged). Plan: `plan.md`, *Experiment X2*. Design and decisions: `../../EXPERIMENTS.md`.
+
+- [x] X2.1: `PlaneKit/Ransac/PlaneSearch`: vertical (2-point, NAPSAC) and horizontal (1-point) hypotheses, range-scaled band, MSAC, PROSAC by sample count, lazy scoring, adaptive k, LO refit, degenerate rejection.
+  - Acceptance: on synthetic scenes (2 cm noise) a corner gives two vertical planes within 2° and 2 cm; a floor gives one horizontal plane; no slanted plane ever; a thick (slab) wall comes out as one plane with the wide band; a fixed seed gives the same result. `swift test` green.
+- [x] X2.2: `RansacScanner`, `SurfaceEngine`, connected pieces, robust extents, slice merging, round counters. `LiveSurfaces` takes any engine.
+  - Acceptance: two walls keep one id each over 50 rounds of fresh noise; coplanar points 20 m away don't inflate the extent; a slab wall in parallel slices merges to one track; the extent is within 20 % of the lattice; a tracked plane is refitted without a full search; `swift test` green.
+- [x] X2.3: Schema v4 `surface_round` (Swift writer, Python reader, DDL, fixtures v4), `info` and `peek`.
+  - Acceptance: v4 contract fixture on both sides, v1–v3 still read; ruff, pytest ≥ 85 % green.
+- [x] X2.4: SidingsAR: RANSAC engine live, dials menu, HUD timings, benchmark action, `surface_engine` meta.
+  - Acceptance: compile check clean, `swift test` green.
+- [x] X2.5: Blender: engine-labelled planes layer, round-stats empty with animated properties, readout at the current frame.
+  - Acceptance: headless Blender suite green.
+- [x] X2.6: Docs: README, CLAUDE.md files, EXPERIMENTS.md, HANDOFF.md, CONSOLIDATION §10b if it applies.
+
+### Checkpoint X2 (device, user)
+- [ ] Install, record ~1 min indoors: planes stable, no slanted ones. Note HUD fit ms (last, mean, p95), fps and *mem MB*.
+- [ ] *Benchmark on live cloud*: note ms per full search and the point count.
+- [ ] Facade at 8–15 m: one plane per wall, extent close to the points, ids stable.
+- [ ] Record, `pull.sh`, open in Blender: planes layer says RANSAC, the stats curves show compute ms over the timeline.
+
+---
+
+## Experiment X3 (planned 2026-10-02): walls from the images
+
+Plan: `plan.md`, *Experiment X3*. Not approved yet; branch `exp/x3-image-geometry` from `main`. Each step has a gate, and a failed gate stops the line.
+
+- [ ] X3.0 (user): ground-truth facade. Tape or laser: wall width and height, window and door sizes, siding course spacing, plus a hand takeoff. Record a 3–4 m lateral sweep at about 8 m and at about 12 m. `pull.sh`.
+- [ ] X3.1: T33 on the Linux box (COLMAP, poses frozen). Reprojection error and slab thickness per distance band. Gate: under about 1 px, slab at most about 8 cm at 5–8 m.
+- [ ] X3.2: plane per wall from the SfM points. Gate: yaw within 1°, offset within 5 cm at 6 m, against the tape.
+- [ ] X3.3: wall and opening masks back-projected through the poses. Gate: wall area within ±5 % of the tape number at both standoffs.
+- [ ] X3.4 (only if needed): monocular depth scaled to the SfM points.
+- [ ] X3.5: calibrated margin of error (needs several houses).
+- [ ] X3.6 (user's call): what runs on the phone; revisits D3.

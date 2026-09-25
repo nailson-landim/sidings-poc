@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Merged with the generated Info.plist. Xcode ignores INFOPLIST_KEY_UIFileSharingEnabled, so it lives here.
+	     Kept outside the synchronized SidingsAR/ folder so it isn't copied as a resource. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+</dict>
+</plist>

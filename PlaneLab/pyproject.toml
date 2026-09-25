@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "planelab"
+version = "0.1.0"
+description = "Plane Lab: replay SidingsAR recordings and fit planes offline (SPEC.md)"
+requires-python = ">=3.11,<3.12"
+dependencies = ["numpy==1.26.4"]
+
+[project.scripts]
+planelab = "planelab.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+planelab = ["py.typed"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["blender/planelab_blender/vendor"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "N", "ANN", "RUF", "PTH", "T20"]
+
+[tool.ruff.lint.per-file-ignores]
+# print is for CLI entry points and scripts run inside Blender; tests may assert freely.
+"src/planelab/cli.py" = ["T20"]
+"spikes/*" = ["T20"]
+"scripts/*" = ["T20"]
+"tests/*" = ["ANN201", "ANN001"]
+# Blender naming (PLANELAB_OT_*) and the vendor sys.path insert before imports.
+"blender/*" = ["N801", "RUF012"]
+"tests/blender/*" = ["T20"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["planelab"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

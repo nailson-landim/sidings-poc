@@ -1,0 +1,427 @@
+# SidingsAR
+
+An iOS proof of concept that shows what **native ARKit plane detection** gives us before we build the Siding Scanner's own geometry pipeline (custom RANSAC, see [`../CONSOLIDATION.md`](../CONSOLIDATION.md) decision D3).
+
+SidingsAR detects wall and floor planes and draws each one from its real outline. It labels planes with their size, removes the duplicate planes ARKit tends to produce, and exposes debug views: anchor markers, feature points, and live memory use.
+
+> **Status (2026-09-25):** v2.1. The user tested it on device ("seems a great starter"). The before/after memory numbers and the LiDAR vs. non-LiDAR comparison haven't been recorded yet (see [Findings](#findings)).
+
+---
+
+## Contents
+
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+- [Using the app](#using-the-app) (including [Experiment X1](#experiment-x1-findsurface-planes-branch-expx1-findsurface-live))
+- [Architecture](#architecture)
+- [Plane arbitration: NMS, hysteresis, smoothing](#plane-arbitration-nms-hysteresis-smoothing)
+- [Rendering and memory budget](#rendering-and-memory-budget)
+- [Project layout](#project-layout)
+- [Testing](#testing)
+- [Tuning guide](#tuning-guide)
+- [Known limitations](#known-limitations)
+- [History](#history)
+- [Findings](#findings)
+
+---
+
+## Requirements
+
+| | |
+|---|---|
+| Xcode | 26.x (the project uses Xcode 16+ synchronized folders) |
+| Deployment target | iOS 18.0, iPhone only, **locked to Landscape Right** (hold the phone with the charging port on the right). UI orientation doesn't change the recording: ARKit's camera pose and `capturedImage` are always in the sensor's landscape orientation. |
+| Language | Swift 6, default actor isolation `MainActor` |
+| Device | A physical iPhone with ARKit world tracking. **The Simulator can't run ARKit.** |
+| Plane classification | A12 Bionic or newer (`ARPlaneAnchor.isClassificationSupported`). Older devices fall back to "none". |
+| LiDAR | Optional. ARKit uses it automatically when present; there's no in-app switch (see [Known limitations](#known-limitations)). |
+
+## Quick start
+
+```bash
+# 1. Unit tests: pure Swift, run on the Mac, no device needed
+cd PlaneKit && swift test
+
+# 2. Compile check for the app
+xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR \
+  -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+```
+
+To run it:
+1. Open `SidingsAR.xcodeproj`.
+2. Select the shared **SidingsAR** scheme and a connected iPhone.
+3. Run.
+
+Signing is automatic with team `CBA2GU7TYT`; change it under *Signing & Capabilities* if you build with another account. The bundle ID is `br.com.neuralnexgen.sidingsar`.
+
+## Using the app
+
+### Planes on screen
+
+Each detected plane is drawn from its real **boundary polygon** (`ARPlaneGeometry`), at 35% opacity, colored by classification:
+
+| Classification | Color |
+|---|---|
+| wall | cyan |
+| floor | green |
+| ceiling | yellow |
+| table, seat | orange |
+| door, window | purple |
+| none | cyan if vertical, white if horizontal |
+
+A plane that loses duplicate suppression is dimmed to 15% opacity and gets no label or markers (see [Plane arbitration](#plane-arbitration-nms-hysteresis-smoothing)).
+
+### Labels
+
+Each visible plane has a screen-space label:
+
+```
+48" × 83"  (27.1 ft²)
+wall
+```
+
+- `W × H` is the plane's **extent** (`planeExtent`, a rotated bounding rectangle), in inches, smoothed.
+- `ft²` is the area of the **boundary polygon**, so it's usually smaller than W × H.
+- The second line is the classification, when ARKit provides one.
+
+### Magenta markers
+
+| Marker | Meaning |
+|---|---|
+| Large sphere (2 cm) | Anchor **origin**: `ARAnchor.transform`, fixed while the plane grows |
+| Medium sphere (1.2 cm) | Extent **center**: `ARPlaneAnchor.center`, smoothed; moves as the plane extends |
+| Small octahedra (6 mm) | **Boundary vertices**: up to 64 per plane |
+
+The gap between the origin and the center shows that ARKit anchors a plane where it was first seen, then grows the extent around it.
+
+### Bottom panel
+
+| Field | Meaning |
+|---|---|
+| **planes** `kept/raw` | Planes shown after suppression / live ARKit plane anchors |
+| **points** | ARKit raw feature points in the current frame |
+| **cloud** | Averaged points in the live cloud (CurvSurf's accumulator, below) |
+| **mem MB** | Process physical footprint, refreshed at 1 Hz. The same number as Xcode's memory gauge and the jetsam limit. |
+| **fps** | Frames ARKit delivered in the last second. It was about 30 on an iPhone 13 during the first R1 spike, not 60. |
+| **tracking** | `normal` / `limited` / `n/a` (details appear in the top banner) |
+| **LiDAR** | Whether this device supports scene reconstruction |
+
+- **Control row** (one row, for the landscape layout): the detection picker, Debug, Record/Stop and Reset.
+- **Detection picker:** `Vertical` / `Horizontal` / `Both`. Changing it resets the session.
+- **Debug menu (ladybug):**
+  - Averaged cloud (on by default): CurvSurf's averaged feature cloud, growing as you scan (`../SPEC.md` L12, T28). Every feature id seen at least 5 times becomes one point at the z-score-filtered mean of its last 100 sightings, drawn as a small square that keeps about the same size on screen at any distance. Color by samples: under 10 pale pink, 10–49 magenta, 50+ red (the same bands as Plane Lab's Blender layer). The accumulator runs on its own queue, and the mesh is rebuilt 5 times a second. Reset clears it. Settings are `RecorderConstants.cloud*`.
+  - Feature points (on by default): ARKit's own per-frame raw points (yellow)
+  - Anchor markers
+  - Hide duplicates
+  - RealityKit render statistics
+- **Record / Stop (red):** records a Plane Lab session (`../SPEC.md` §4) into `Documents/Sessions/<yyyyMMdd-HHmmss>.planelab/`: `session.sqlite` (pose, intrinsics, raw feature points and ids for every frame, plus `meta`) and `video.mov` (HEVC, one image per frame). The viewer keeps running.
+  - While recording, a red row shows seconds, frames logged, frames dropped (write queue full), frames without an image (pool busy), MB written and free GB.
+  - After Stop, one line reports what was saved.
+  - Reset, a detection-mode change, pausing, going to the background, an interruption, a session error or free space under 1 GB stop and save the recording first, with the reason in `meta.stop_reason` (`StopReason`).
+  - Events are recorded too: the tracking state at the start and every change on its frame (relocalization included), and the first frame of each run of frames without an image, with its reason (`no_buffer` or the encoder's). The counts per reason go to `meta.image_skip.*`, and `planelab info` prints them.
+  - The 6-buffer pixel pool is allocated when Record is tapped (T10). Earlier recordings, with 4 buffers allocated during capture, lost images at frames 5–9.
+  - ARKit's plane anchors are recorded too: every add, update and remove callback, stamped with the frame. Planes that already exist when Record is tapped are logged as added at frame 0.
+  - **Mark** (flag, while recording) adds a `mark N` event, which becomes a timeline marker in Blender.
+  - **High-resolution stills** (`../SPEC.md` P29, T31), for photogrammetry: with `stillsEnabled` (on), the session runs in ARKit's recommended format for high-resolution frames, and while recording the app asks for a full-sensor still every 0.25 m or 10° of camera motion (at most every 0.25 s, one at a time, only while tracking is normal). Each still is a JPEG (quality 0.92) in `stills/`, in the camera's own orientation, with a line in `stills/stills.jsonl`: its ARKit pose (`camera_to_world`, row by row), intrinsics, sizes, exposure, tracking and EXIF. The red row shows **stills** (failed ones in brackets with ✗), MB includes them, and the Stop line gives the count and size. `session.sqlite` gets a `still` event per still and `stills_saved`, `stills_failed`, `stills_bytes`, `stills_width`, `stills_height` in `meta`.
+  - **Exposure cap** (`../SPEC.md` P30, T32): ARKit's auto exposure picked 9.4 ms in the late afternoon, which blurred every still while walking. The app caps the exposure time through `configurableCaptureDeviceForPrimaryCamera` (default 1 ms, `maxExposureS`), and auto exposure raises the ISO instead. **Debug › Max exposure** changes it live (Auto, 2, 1, 0.5 ms; logged as an `exposure_cap` event while recording). The top row shows **exp ms** and **ISO**. If ARKit won't share the camera, the menu says so and exposure stays automatic.
+  - **The averaged cloud is recorded too** (schema v2, `../SPEC.md` T29): Record clears the live cloud, then every 6 recorded frames a `cloud` row holds what changed (a full copy every 50 rows), plus a last row at Stop. `meta.cloud_rows`, `cloud_points` and `cloud_frames_dropped` sum it up, and `planelab info` prints it.
+  - Get sessions onto the Mac with `devicectl` (see `CLAUDE.md`), then run `python -m planelab info <bundle>` (`../PlaneLab/`).
+- **Reset:** clears all anchors and tracker state, and restarts tracking.
+
+### Banners and overlays
+
+- **Top banner:** shows limited tracking with a reason (initializing, excessive motion, insufficient features, relocalizing) and session interruptions.
+- **Coaching overlay:** Apple's "move your iPhone" guidance, with goal `.anyPlane`.
+- **Error alert:** shown on session failure, with a Reset action.
+
+### Experiment X1: FindSurface planes (branch `exp/x1-findsurface-live`)
+
+On this branch the app also finds planes with CurvSurf's **FindSurface** library and keeps them tracked (`../EXPERIMENTS.md`). It's on by default:
+- **Debug › X1 FindSurface planes** turns it on and off. Off also stops the rounds.
+- **Debug › ARKit planes** hides ARKit's own planes, so only X1's are on screen.
+
+**What you see.**
+- One translucent fill per tracked plane: the convex outline of its inlier points, colored by track number (orange, blue, teal, indigo, mint, brown, yellow, green, then repeating).
+- Tentative tracks are faint and unlabeled. Stale tracks (in view but not found for 8 refits) are grey.
+- Labels read `X1 #3  4.10 × 3.05 m  rms 1.9 cm`; width is along the plane's horizontal.
+- The top row adds **X1 planes** (confirmed/all) and **fit ms** (the last round's time).
+
+**How it works** (`../EXPERIMENTS.md` X1):
+1. **Rounds.** Every 0.25 s, the live averaged cloud goes to FindSurface once.
+2. **Refits.** Tracked planes in view are refitted, each seeded from its own inlier nearest its center.
+3. **Discovery.** New planes are seeded from the flattest grid cells of unclaimed points that have ≥ 10 samples.
+4. **Tracking.** A fit joins a track when they share inlier feature ids, or when their outlines overlap, within 10° and 8 cm. Normals and positions are smoothed (EMA). Tracks are confirmed after 3 matches. Tracks on one surface merge, and the older id survives.
+
+Recording clears the cloud, so it clears X1's tracks too, and so does Reset.
+
+**Recording X1** (schema v3, `../EXPERIMENTS.md` XD6–XD7):
+- While recording with X1 on, every track that changed in a round goes into the session's `surface` table: add, update, or remove, the remove naming the older track when it was a merge.
+- `meta` holds X1's settings (`x1.*`, `x1_enabled`) and, at Stop, `x1_rows`, `x1_tracks` and `x1_confirmed`.
+- In Blender (re-import, or `pull.sh`) the **X1 FindSurface planes** layer replays them on the timeline, in the same colors.
+
+**Settings.** They live in `SurfaceSettings` (PlaneKit). The defaults are **v2** (2026-10-01): measurement accuracy 0.10 m, mean distance 1.0 m, lateral extension 7, radial expansion 5, seed radius max 6 m, keep band 0.15 m, merge gap 0.5 m. v1 used CurvSurf's demo values (mean distance 0.50 m, lateral extension 5, seed radius max 3 m, keep band 0.05 m, no merge gap).
+
+**X1 dials** (*Debug › X1 dials*) change the main settings live:
+- FindSurface's lateral extension, radial expansion, measurement accuracy and mean distance;
+- the tracker's seed radius max, keep band and merge gap.
+
+A change applies from the next round on and keeps the planes. **Restore v2 defaults** undoes the changes, and **Restart X1** forgets the planes so they're found again with the new dials. While recording, each change is logged as an `x1_dial` event and shows as a timeline marker in Blender. What each dial does, when to raise or lower it, and the on-site protocol are in `../EXPERIMENTS.md`, *X1 dials*.
+
+**Licence.** FindSurface's binary is free for non-commercial use only. Product use needs a licence from CurvSurf.
+
+### Experiment X2: RANSAC planes, live (branch `exp/x2-ransac`, kept for history, not merged)
+
+On this branch the app runs **our RANSAC** on the live averaged cloud instead of FindSurface (`../EXPERIMENTS.md` *X2*, XD14–XD18). X1's engine is still in the code (`FindSurfaceFitter.swift`, `SurfaceScanner`), but the UI runs RANSAC. It's on by default:
+- **Debug › RANSAC planes** turns it on and off. Off also stops the rounds.
+- **Debug › ARKit planes** hides ARKit's own planes, so only the RANSAC ones are on screen.
+
+**What you see.** The same fills and labels as X1 (`#3  4.10 × 3.05 m  rms 1.9 cm`). The top row shows **RANSAC** (confirmed/all), **fit ms** (the last round), **med/p95** (over the last 64 rounds) and **skipped** (rounds not started because the previous one was still running; shown only when above 0). After a benchmark, an orange line under the stats holds its result.
+
+**How a round works** (every 0.25 s, on its own queue; `PlaneKit/Ransac/`):
+1. Each point gets a band τ = 4 cm + 0.6 cm/m² × range², capped at 35 cm (26 cm at 6 m, the slab the data forms at 4–7 m).
+2. **Refit:** each tracked plane in view is refitted from the points in its band within its extent plus 1 m, by a least-squares pass that keeps it vertical or horizontal. Known walls cost a refit, not a search, and can grow.
+3. **Discover:** `PlaneSearch` runs on the points no track holds, when enough are left and changed (or every 4 rounds). It's sequential RANSAC with **vertical and horizontal planes only**: NAPSAC second points from a 2 m grid, PROSAC order by sample count, MSAC scoring, a lazy strided pre-score, adaptive hypothesis count at 99 %, and LO refits.
+4. Each found plane is split into **connected pieces** (0.4 m cells, linked within 2 cells), so coplanar points far away stay out of a wall's extent.
+5. The X1 **tracker** matches by shared feature ids, geometry gates (10°, 25 cm: it merges the slices a thick surface gives), merge gap 0.5 m, and tentative → confirmed → stale. Outlines trim 2 % of each end of both axes before the hull.
+
+**Measuring compute on the phone.**
+- **HUD:** last, median and p95 round time.
+- **Recording:** every round becomes a `surface_round` row (schema v4, `../EXPERIMENTS.md` XD16): total, refit and search milliseconds, points, unclaimed points, hypotheses, full scores, point tests, tracks, skipped rounds and the phone's thermal state. `meta` gets `surface_engine = ransac` and, at Stop, `surface_rounds` and the median, p95 and max round time. Plane Lab's `info` and Blender's *Plane engine* panel show them.
+- **Benchmark on live cloud** (*Debug › RANSAC dials*): 20 full searches (up to 4 planes) on the cloud as it is, on the engine's queue, with no tracks touched. It reports median, p95 and max in the HUD, in the log and, while recording, as a `benchmark` event. Compare it with the Mac's number from `swift test --filter searchSpeed` (same code, a synthetic 15k-point facade).
+
+**Dials** (*Debug › RANSAC dials*; each applies from the next round on and keeps the planes; while recording each change is a `surface_dial` event, a timeline marker in Blender):
+- band: base, k per m², maximum;
+- search: vertical hypotheses, confidence, planes per search, search every N rounds, round interval;
+- pieces and extents: piece cell, piece link, extent trim, refit margin;
+- tracking: slice merge distance (the plane-distance gate, 8 cm to 1 m), merge gap, keep band.
+
+**Replaying a recording on the Mac:** `PLANELAB_REPLAY=<bundle>[:<bundle>…] [PLANELAB_SETTINGS="tauMax=0.5,maxPlaneDistance=0.4"] swift test --filter recordedReplay` feeds a recording's cloud through the engine round by round and prints the round times and the final tracks. See `../EXPERIMENTS.md` for what it showed on the three facade recordings.
+
+---
+
+---
+
+## Architecture
+
+```
+                     ┌──────────────────────── ARSession (ARKit) ────────────────────────┐
+                     │ didAdd / didUpdate anchors     didRemove        didUpdate frame (~60 Hz) │
+                     └──────────┬─────────────────────────┬──────────────────┬───────────────┘
+                                │                         │                  │
+                     ARSessionController                  │                  │
+                     ingest(): ARPlaneAnchor ──► PlaneObservation            │
+                               tracker.upsert (EMA)       │                  │
+                               mark dirty                 │                  │
+                                │               remove visuals now           │
+                                ▼                         ▼                  ▼
+                         ┌─────────────────────── throttled frame tick ───────────────────────┐
+                         │ 10 Hz: PlaneTracker.resolve() (NMS + hysteresis)                   │
+                         │        render dirty planes + planes whose suppression flipped      │
+                         │ 10 Hz: feature-point count   ·   1 Hz: memory footprint            │
+                         └──────────────┬──────────────────────────────────────────────────────┘
+                                        ▼
+                                  PlaneRenderer ──► AnchorEntity per plane
+                                   │                 ├─ DynamicMesh fill (replace in place, RebuildGate)
+                                   │                 └─ AnchorMarkers (origin, center, boundary mesh)
+                                   └─► LabelOverlay (UIKit) ◄── SceneEvents.Update: project every frame
+```
+
+There are three cadences:
+
+1. **ARKit anchor callbacks.** These only record what changed: snapshot the anchor, feed the EMA, mark it dirty. Removals take visuals off screen immediately, because that's how ARKit reports plane merges.
+2. **Frame tick (10 Hz).** `session(_:didUpdate frame:)` resolves NMS and renders only dirty planes and planes whose suppression flipped. If a plane's geometry change was deferred by its rebuild gate, the plane stays dirty and is retried on the next tick.
+3. **Every rendered frame.** Labels are re-projected (`ARView.project`), and those behind the camera or off screen are culled.
+
+The session delegate runs on the main queue. With Swift 6's default `MainActor` isolation, `ARSessionDelegate` is adopted as `@preconcurrency`. The frame is never retained.
+
+The **ARKit ↔ logic boundary** is `PlaneAnchorAdapter`, which converts an `ARPlaneAnchor` into a `PlaneObservation`. Everything behind that boundary lives in `PlaneKit` and only depends on `simd` and Foundation, so it's unit-tested on the Mac.
+
+## Plane arbitration: NMS, hysteresis, smoothing
+
+ARKit often keeps several coplanar, overlapping anchors alive for the same surface, especially without LiDAR. `PlaneTracker` applies **Non-Maximum Suppression**:
+
+1. Two planes **conflict** when all of these hold:
+   - same alignment
+   - normals within `maxNormalAngleDegrees`
+   - plane-to-plane distance within `maxPlaneDistance`
+   - convex-hull overlap of at least `minOverlapRatio` of the smaller plane
+2. **Score** = polygon area × stability, where stability ramps from 0.5 to 1 over `stableUpdateCount` updates.
+3. Greedy NMS: the highest effective score wins; conflicting planes are **suppressed**, meaning dimmed or hidden but **never removed**, because ARKit owns the anchors.
+4. **Hysteresis:** the current winner's score is multiplied by `incumbentMargin`. A challenger must beat it for `challengerFrames` consecutive resolves before it takes over. At the 10 Hz resolve cadence, 5 resolves is about 0.5 s.
+5. **EMA smoothing** of each plane's world center and extent (factor `emaAlpha`). It snaps instead of blending when the center jumps more than `emaResetDistance`, for example after relocalization.
+
+All parameters are in `PlaneTrackerConfig` (`PlaneKit/Sources/PlaneKit/PlaneTracker.swift`):
+
+| Parameter | Default | Effect |
+|---|---|---|
+| `maxNormalAngleDegrees` | 10° | Max angle between normals for two planes to count as duplicates |
+| `maxPlaneDistance` | 0.08 m | Max separation between the two planes |
+| `minOverlapRatio` | 0.3 | Intersection / smaller area |
+| `incumbentMargin` | 1.2 | The winner's score bonus |
+| `challengerFrames` | 5 | Consecutive wins a challenger needs to take over |
+| `stableUpdateCount` | 30 | Updates until a plane counts as fully stable |
+| `emaAlpha` | 0.3 | Smoothing factor (higher = snappier) |
+| `emaResetDistance` | 0.2 m | Center jump that resets the EMA |
+
+The cost is O(n²) pairs with cheap early rejects: bounding sphere, then normal angle, then plane distance, and only then polygon clipping. With 50 planes, `resolve()` takes about 2 ms in a debug build.
+
+## Rendering and memory budget
+
+In v2.0, memory climbed steadily while scanning. The cause was resource churn in the app itself, not ARKit's anchors. v2.1 follows these rules, and new code should too:
+
+| Rule | Implementation |
+|---|---|
+| **Never generate a `MeshResource` per update.** Allocate once, update in place. | `DynamicMesh`: `MeshResource.generate(from: Contents)` once, then `replace(with:)` |
+| **Rebuild only on real change, at a bounded rate.** | `RebuildGate`: vertex count or area changed by more than 5%, and at least 0.25 s since the last rebuild (1 s for suppressed planes) |
+| **No 3D text.** | `LabelOverlay`: UIKit labels projected each frame; the text is updated only when the string changes |
+| **Batch many small markers into one mesh.** | `PointMarkerMesh.octahedra`: all boundary vertices of a plane in a single entity |
+| **Don't do work for planes nobody sees.** | Suppressed planes get no labels or markers, and their fill rebuilds at 1 Hz |
+| **Anchor callbacks mark dirty; the tick does the work.** | `ARSessionController.resolveAndRender`, run at 10 Hz |
+| **Share materials.** | One `UnlitMaterial` per color, cached in `PlaneRenderer` |
+| **Turn off post-processing we don't use.** | `ARView.renderOptions` disables HDR, depth of field, motion blur, camera grain, grounding shadows, environment lighting, person occlusion and face mesh |
+
+What each rule replaced (v2.0 → v2.1):
+
+- `generateText` plus a background mesh was regenerated on almost every ARKit update, even for hidden labels.
+- There was one `ModelEntity` per boundary vertex: up to 64 per plane, dimmed planes included.
+- Every fill rebuild created a new `MeshResource` and `ModelComponent`, up to 10 Hz per plane.
+- Every anchor callback re-rendered every plane.
+
+**If memory is still too high**, the next options are:
+- a smaller `ARWorldTrackingConfiguration.videoFormat` (smaller camera buffer pool)
+- a lower `arView.contentScaleFactor`
+- pruning long-suppressed tiny anchors with `session.remove(anchor:)` (ARKit keeps every plane anchor it ever created)
+
+## Project layout
+
+```
+ARKit_WallDetection/
+├── SidingsAR.xcodeproj          Xcode project; SidingsAR/ is a synchronized folder, and PlaneKit is a local package
+├── SidingsAR-Info.plist         Info.plist keys Xcode can't generate (UIFileSharingEnabled); merged into the generated one
+├── SidingsAR/                   App target
+│   ├── SidingsARApp.swift       @main; owns ARSessionController
+│   ├── ContentView.swift        ARView container, label layer, coaching overlay, banner, alert
+│   ├── HUDView.swift            Bottom panel: stats, detection picker, Debug menu, Reset
+│   ├── RansacDialsMenu.swift    Debug › RANSAC dials, live (X2)
+│   ├── ARSessionController.swift  ARSession owner + delegate; ingest → tick → resolve → render
+│   ├── SessionStatus.swift      DetectionMode, tracking-state texts
+│   ├── PlaneAnchorAdapter.swift ARPlaneAnchor → PlaneObservation (the ARKit boundary)
+│   ├── PlaneRenderer.swift      AnchorEntity per plane: fill, markers, labels, material cache
+│   ├── DynamicMesh.swift        MeshResource allocated once, updated with replace(with:)
+│   ├── CloudRenderer.swift      The live averaged cloud: one entity, one mesh part per sample-count band
+│   ├── AnchorMarkers.swift      Origin/center spheres + one boundary-points mesh
+│   ├── LabelOverlay.swift       Screen-space UIKit labels
+│   ├── PlaneStyle.swift         Colors, opacities, label text
+│   ├── MemoryFootprint.swift    phys_footprint for the HUD
+│   └── Recording/               Plane Lab recorder glue
+│       ├── ARRecordAdapter.swift  ARFrame → FrameRecord and still metadata (with PlaneAnchorAdapter, the only ARKit → PlaneKit conversions)
+│       └── SessionRecorder.swift  Record/Stop, the capture path, HUD stats, meta; SessionWriter does the writing
+├── PlaneKit/                    Swift package with no ARKit or RealityKit; tested on the Mac
+│   ├── Sources/PlaneKit/
+│   │   ├── PlaneObservation.swift  ARKit-free plane snapshot; world normal/center/boundary/area
+│   │   ├── PolygonMath.swift       Area, convex hull, Sutherland–Hodgman clipping, projection
+│   │   ├── PlaneTracker.swift      NMS + hysteresis + PlaneTrackerConfig
+│   │   ├── Smoothing.swift         PlaneSmoother (EMA with jump reset)
+│   │   ├── RenderBudget.swift      Throttle, RebuildGate, PointMarkerMesh
+│   │   ├── Cloud/                  CurvSurf's averaged cloud (../SPEC.md L12, T27): the phone's port of Plane Lab's accumulator
+│   │   │   ├── CloudSettings.swift     CloudSettings, CloudGate, CloudPointFilter (near/far cut), CloudFrameGate (motion gate)
+│   │   │   ├── FeatureAccumulator.swift  FeatureAccumulator (FIFO per id, z-score mean, eviction, change tracking), CloudPipeline
+│   │   │   ├── LiveCloud.swift     The pipeline on its own queue: non-blocking ingest, a display copy every 6 frames
+│   │   │   └── CloudMesh.swift     Camera-facing squares sized by distance, split into sample-count bands
+│   │   ├── Surfaces/               X1: seeds, the surface tracker, rounds (SurfaceScanner), LiveSurfaces, SurfaceEngine protocol, SurfaceSettings
+│   │   ├── Ransac/                 X2: PlaneSearch (sequential RANSAC, vertical and horizontal), ConnectedPieces, RansacScanner
+│   │   └── Recording/              Plane Lab recorder (../SPEC.md §4), being built
+│   │       ├── Constants.swift     RecorderConstants: every recorder setting, written to each session's meta
+│   │       ├── Records.swift       FrameRecord, AnchorRecord, LocationRecord, HeadingRecord, EventRecord
+│   │       ├── RecordingPolicy.swift  StopReason, DiskGuard, TrackingChangeDetector, ImageSkipLog
+│   │       ├── Stills.swift        StillTrigger, StillMeta, StillWriter: high-resolution stills (P29)
+│   │       ├── ExposureCap.swift   The live maximum exposure time and its clamping (P30)
+│   │       ├── Packing.swift       Little-endian BLOB layouts (matrices, points, ids) with no simd padding
+│   │       ├── SessionDatabase.swift  session.sqlite: schema v2 (copy of ../session-format/schema_v2.sql; reads v1 too), WAL, seal
+│   │       ├── SessionWriter.swift    One recording bundle off the capture thread: batched commits, frame drops, finish
+│   │       └── VideoWriter.swift   HEVC video.mov: time = frame index / fps, gaps, fragments, capped pixel pool
+│   └── Tests/PlaneKitTests/        Swift Testing suites + fixtures (Recording/ has its own helpers)
+├── legacy/                      The original 2018 SceneKit tutorial (reference only, not maintained)
+└── tasks/                       plan.md (design) and todo.md (task and checkpoint status)
+```
+
+## Testing
+
+`cd PlaneKit && swift test` runs 187 Swift Testing cases in 29 suites (the table below lists the first 18; X1's Surfaces and X2's Ransac suites are described in `../EXPERIMENTS.md`):
+
+| Suite | Covers |
+|---|---|
+| PolygonMath | Area, hull, intersection (none, partial, containment), normal angle, plane distance, overlap ratio, boundary vs. extent fallback, yaw |
+| Non-Maximum Suppression | Coplanar duplicates, perpendicular walls, parallel walls 30 cm apart, disjoint coplanar walls, floor vs. table, horizontal vs. vertical, chains of duplicates, removal, a 50-plane timing bound |
+| Smoothing & hysteresis | EMA convergence and jump reset, winner stable under ±5% jitter, challenger takeover after the streak, a weak challenger never winning |
+| Render budget | Throttle, RebuildGate (first build, unchanged geometry, deferred change, area delta), octahedra counts, index range and outward winding, subsampling |
+| Recorder constants | Every `RecorderConstants` property becomes one `const.*` meta row, including the `const.cloud*` rows Plane Lab parses back |
+| Feature accumulator | Mean from `minSamples`, FIFO wrap, the z-score filter (and all-rejected fallback), eviction by first sighting (also later in the same frame), changes as removals then values, clear, storage in 4,096-id chunks reused after eviction |
+| Cloud filter and gate | `intended` waits for 3 cm, `upstream` passes small steps and blocks big ones, turning passes, near/far cuts, skipping limited tracking |
+| Live cloud | Same cloud as the pipeline on the golden frames, a display copy every 6 frames, a stalled queue dropping frames in under 50 ms without blocking, clear |
+| Cloud mesh | Sample-count bands, squares growing with distance and facing the camera, striding beyond the point limit |
+| Recorded cloud fixture | The golden frames through `SessionWriter` + `LiveCloud` give the committed `../session-format/fixtures/cloud/recorded.planelab` (Plane Lab checks its recompute equals it) |
+| Averaged cloud golden | The Swift pipeline replays `../session-format/fixtures/cloud/golden.json` (written by Plane Lab's accumulator) under five settings: same ids and sample counts, positions within 2e-6 m. Regenerate on the Python side: `python scripts/cloud_golden.py` |
+| Recording policy | `StopReason` values match the spec, the low-disk rule, tracking events at the start and on change only, image skips counted per frame and reported once per burst |
+| BLOB packing | Column-major little-endian matrices (64 and 36 bytes), 12-byte points, uint64 ids, empty arrays, wrong sizes rejected |
+| Session database | Every table round-trips (including `cloud`), a sealed session is one file, empty point BLOBs aren't NULL, mismatched points/ids and cloud arrays refused, unknown `schema_version` refused (1 and 2 are read) |
+| Session writer | Batched commits (manual and timer), frame numbers with no holes, a stalled queue dropping whole frames in under 50 ms without blocking, committed batches surviving an unfinished session, finish writing counters and a matching video into a one-file bundle, nothing accepted after finish |
+| Session-format contract | The embedded DDL matches `../session-format/schema_v2.sql`; the committed v2 fixture decodes to `expected.json` (including its `cloud` rows), and its video holds exactly the `has_image` frames with the right numbers; the v1 fixture still decodes. `PLANELAB_WRITE_FIXTURES=1 swift test --filter writeFixtures` regenerates v2 |
+| Live cloud recording | Rows every 6 recorded frames rebuild the accumulator's cloud at each row (full copies and changes with removals), Stop adds a row for the last frame and nothing after, Record starts from an empty cloud |
+| Video writer | HEVC timestamps with gaps (including a leading gap), keyframe spacing, frame numbers surviving encoding, a full pool skipping instead of blocking, out-of-order frames, plane-by-plane copy, and a half-written movie readable up to its last fragment. `PLANELAB_SPIKE_OUT=<dir> swift test --filter spikeVideo` writes the 1920 × 1440 spike video for Plane Lab T2 |
+
+Anything that can be expressed without ARKit or RealityKit goes into `PlaneKit`, with tests. The app target has no unit tests; its behavior is checked on device against the checkpoints in `tasks/todo.md`.
+
+## Tuning guide
+
+| Symptom | Adjust |
+|---|---|
+| Duplicate planes still visible | Raise `maxPlaneDistance` or `maxNormalAngleDegrees`, or lower `minOverlapRatio` |
+| Distinct surfaces merged (a recessed door or window hidden by its wall) | Lower `maxPlaneDistance` (typical recesses are 3–10 cm) |
+| The winning plane flickers | Raise `incumbentMargin` or `challengerFrames` |
+| A clearly better plane takes too long to win | Lower `challengerFrames` |
+| Labels or centers lag behind | Raise `emaAlpha` |
+| Plane outlines lag while scanning | Lower `PlaneRenderer.visibleRebuildInterval` (costs more mesh updates) |
+| Memory still climbs | See the next options in [Rendering and memory budget](#rendering-and-memory-budget) |
+
+Use the `kept/raw` counter and the **Hide duplicates** toggle to judge suppression on device.
+
+## Known limitations
+
+- **No LiDAR switch.** ARKit uses LiDAR for plane detection automatically and has no public API to turn it off. Compare LiDAR and non-LiDAR by running on separate devices.
+- **Labels are 2D overlays.** They follow the plane but don't scale with distance and aren't occluded by real geometry. That's the price of the memory savings.
+- **Suppression is visual only.** Suppressed anchors stay in the ARKit session and in memory.
+- **The NMS thresholds are untuned** and don't yet distinguish recessed openings from their wall.
+- **ARKit's plane detection is short-range.** It degrades at the 8–15 m standoff a facade capture needs (see [`../CONSOLIDATION.md`](../CONSOLIDATION.md) §4). This app measures that limit; it doesn't solve it.
+- **`legacy/`** targets iOS 11 / Swift 4 and isn't expected to build with current Xcode.
+
+## History
+
+| Version | Change |
+|---|---|
+| v1 (2018) | SceneKit tutorial ([ambujpunn/ARKit_WallDetection](https://github.com/ambujpunn/ARKit_WallDetection)), vertical planes only. Now in `legacy/`. |
+| v2.0 | RealityKit rewrite: vertical and horizontal planes, classification, NMS and hysteresis, EMA, magenta markers, full delegate coverage. See `../REQUEST.md` (Original Request). |
+| v2.1 | Feature-points debug view and memory-savvy rendering (Request 2). |
+
+v1 looked "dirty" mainly because of bugs, not ARKit:
+- **Double offset:** the child node sat at `anchor.center` and `update()` also moved the parent there, so planes drifted as they grew.
+- **Rotation ignored:** `planeExtent.rotationOnYAxis` wasn't used.
+- **No `didRemove`:** merged planes never left the screen.
+- **Rectangles** were drawn instead of the boundary polygon.
+- **No duplicate suppression.**
+
+## Findings
+
+- **Device test (2026-09-25, by the user):** works as a starter for native-ARKit validation. Numbers not recorded yet.
+- **Memory:** v2.0 grew steadily during a scan; the causes are listed under [Rendering and memory budget](#rendering-and-memory-budget). The v2.1 before/after number is *to be recorded*: read "mem MB" after about 1 min of scanning the same room.
+- **LiDAR vs. non-LiDAR** (iPhone 13 Pro vs. iPhone 13, same room): *to be recorded.*
+- **NMS effect:** a "small improvement" by eye so far; not tuned.
+- **Recording load, iPhone 13 (Plane Lab spike R1, 2026-09-28, two runs of 96 s and 69 s while charging):**
+  - Copying each 1920 × 1440 camera image on the main thread costs p50 0.6 ms and p95 under 1 ms.
+  - HEVC encoding dropped 0.15 % of images (pool only) and caused no stutter.
+  - **ARKit's format promises 60 fps but delivered a flat 30 Hz,** with thermal state already *serious*.
+  - *mem MB* rose from about 300 to 440 in a minute. Whether that comes from the viewer or the recording is still open (Plane Lab Checkpoint 2A).
+- **Stills, first run, iPhone 13 (Plane Lab T31, 2026-09-30, `20260930-171700`, 79 s, 17:17):** ARKit's recommended format for high-resolution frames is the usual 1920 × 1440 at 60 fps, and stills come out at 4032 × 3024 (fx 3035 px). 123 stills, none failed, 3.6 MB each, 93 per minute, and the video kept 4,714 of 4,722 images. But **every still was blurred**: exposure sat at 9.4 ms at ISO 80, and turning at 29°/s (median) smears about 14 px at that resolution. Hence the exposure cap (P30).
+- **Stills with the exposure cap, iPhone 13 (Plane Lab T32, 2026-09-30, `20260930-174033`, 64 s, 17:40):** ARKit shares its capture device during world tracking (`exposure_control = 1`). With a 1 ms cap, exposure was 0.99 ms on every still and frame, ISO 500–1250, tracking 100 % normal. Predicted blur fell from 17.4 px to 1.8 px (median), and the plain stucco's grain is sharp at 100 %. 139 stills, 130 per minute, 2.8 MB each. The stream averaged 51 fps while the phone reached thermal *serious*.
+- **Live cloud while recording, iPhone 13 (Plane Lab T28–T30, 2026-09-30):** *mem MB* tops out at about 400 MB (user). `20260929-172952` (74 s) and `20260930-102759` (116 s) both delivered 60.0 fps, with tracking 100 % normal. The second one's recorded cloud (10,470 points) equals the Mac's recompute to 0.001 mm. Its `cloud` rows cost 2.2 MB/min, next to 12.0 MB/min for all of `session.sqlite` and 62 MB/min of video. Images missing at startup were 8 and 6 (`no_buffer`), under 0.1 %.
+- **First real recording, iPhone 13 (Plane Lab T7, 2026-09-28, 48 s, thermal *fair*):** a steady **60 Hz** delivered. 2,863 frames were logged with 0 dropped, 7 had no image (0.24 %, mostly while the encoder started), and tracking was 100 % normal. The session was 82 MB/min (16.9 MB SQLite plus 48 MB HEVC). So the 30 Hz in the spike came from heat, not from recording.

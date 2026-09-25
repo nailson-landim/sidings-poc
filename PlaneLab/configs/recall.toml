@@ -1,0 +1,17 @@
+# Plane Lab "recall" preset (SPEC.md §5.3): planes sooner from less evidence, at the cost of more false or unstable
+# planes. Only the keys that differ from default.toml are listed.
+
+[gate]
+mode = "off"
+
+[accumulate]
+min_samples = 3
+
+[fit]
+tau0_m = 0.05
+tau_range_k = 0.001
+min_inliers = 15
+min_spread_m = 0.15
+
+[track]
+confirm_hits = 2

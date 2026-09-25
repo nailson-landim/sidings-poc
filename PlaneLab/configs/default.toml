@@ -1,0 +1,41 @@
+# Plane Lab default settings (SPEC.md §5). A test keeps this file equal to LabConfig's defaults.
+# Any preset may list only the keys it changes; the rest keep these values.
+
+[filter]
+near_cut_m = 0.25            # drop points closer to the camera (CurvSurf: 0.25 m)
+far_cut_m = 0.0              # drop points farther away; 0 keeps every distance
+normal_tracking_only = false # skip frames whose tracking isn't normal
+
+[gate]
+mode = "off"                 # off (every frame) | intended | upstream (CurvSurf as coded) | parallax
+move_m = 0.03                # intended/upstream: camera move threshold
+turn_deg = 3.0               # intended/upstream: camera turn threshold
+parallax_deg = 1.0           # parallax: a feature's view direction must turn this far for a new sample
+
+[accumulate]
+max_samples = 100            # FIFO per feature id (CurvSurf: 100)
+min_samples = 5              # averaged point exists from this many samples (CurvSurf: 5)
+zscore = 2.0                 # samples beyond this many sigma from the mean are dropped (CurvSurf: 2)
+max_ids = 100000             # oldest id (by first sighting) is evicted beyond this (CurvSurf: 100 000)
+
+[fit]
+fit_every = 6                # fit every N frames (10 Hz at 60 fps)
+tau0_m = 0.03                # inlier distance at zero range
+tau_range_k = 0.0            # inlier distance grows as tau0_m + tau_range_k * range^2
+min_inliers = 30
+min_spread_m = 0.3           # inliers must spread this far both ways on the plane (rejects a lone edge)
+edge_keep_m = 0.1            # points near an accepted plane's boundary stay available (shared corners)
+vertical = true              # model: normal perpendicular to gravity (2-point samples)
+horizontal = true            # model: normal along gravity (1-point samples)
+free = false                 # model: any normal (3-point samples)
+iterations = 200             # RANSAC hypotheses per search
+max_planes = 12              # searches per fit
+seed = 0
+
+[track]
+merge_angle_deg = 10.0       # PlaneKit NMS terms
+merge_distance_m = 0.08      # raising it hides recessed openings 3-10 cm deep
+merge_overlap = 0.3
+confirm_hits = 3             # matches before a plane is confirmed
+stale_after_fits = 30        # fits without a match before a plane goes stale
+ema_alpha = 0.3              # pose/extent smoothing per match

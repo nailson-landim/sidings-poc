@@ -1,0 +1,15 @@
+{
+  "originHash" : "27721fe4c0d166fa6d5c2f8c6f6690bdbda07d81910fb9e32aef260342414fe3",
+  "pins" : [
+    {
+      "identity" : "findsurface-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/CurvSurf/FindSurface-iOS",
+      "state" : {
+        "revision" : "0b82a23c51aad49bef857f56cc0ea14226e431b1",
+        "version" : "1.0.3"
+      }
+    }
+  ],
+  "version" : 3
+}

@@ -1,0 +1,24 @@
+{
+  "originHash" : "7bd5228cbdc06bf5d70d3097a81928f5641c220b2cb0c5f98c26827e6f6dd006",
+  "pins" : [
+    {
+      "identity" : "findsurface-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://www.github.com/CurvSurf/FindSurface-iOS.git",
+      "state" : {
+        "branch" : "master",
+        "revision" : "0b82a23c51aad49bef857f56cc0ea14226e431b1"
+      }
+    },
+    {
+      "identity" : "swift-collections",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-collections.git",
+      "state" : {
+        "revision" : "8c0c0a8b49e080e54e5e328cc552821ff07cd341",
+        "version" : "1.2.1"
+      }
+    }
+  ],
+  "version" : 3
+}

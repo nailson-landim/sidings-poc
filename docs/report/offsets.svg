@@ -1,0 +1,139 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 760 300' font-family='Helvetica, Arial, sans-serif' font-size='12'>
+<rect width='100%' height='100%' fill='white'/>
+<text x='50' y='22' font-size='14' font-weight='bold'>Where the phone's 3D points sit, measured across the facade (yaw 39°)</text>
+<rect x='50.0' y='249.0' width='5.2' height='1.0' fill='#4c78a8'/>
+<rect x='56.2' y='250.0' width='5.2' height='0.0' fill='#4c78a8'/>
+<rect x='62.4' y='250.0' width='5.2' height='0.0' fill='#4c78a8'/>
+<rect x='68.6' y='249.0' width='5.2' height='1.0' fill='#4c78a8'/>
+<rect x='74.9' y='248.0' width='5.2' height='2.0' fill='#4c78a8'/>
+<rect x='81.1' y='249.0' width='5.2' height='1.0' fill='#4c78a8'/>
+<rect x='87.3' y='248.0' width='5.2' height='2.0' fill='#4c78a8'/>
+<rect x='93.5' y='249.0' width='5.2' height='1.0' fill='#4c78a8'/>
+<rect x='99.7' y='249.0' width='5.2' height='1.0' fill='#4c78a8'/>
+<rect x='105.9' y='242.8' width='5.2' height='7.2' fill='#4c78a8'/>
+<rect x='112.2' y='241.8' width='5.2' height='8.2' fill='#4c78a8'/>
+<rect x='118.4' y='242.8' width='5.2' height='7.2' fill='#4c78a8'/>
+<rect x='124.6' y='228.5' width='5.2' height='21.5' fill='#4c78a8'/>
+<rect x='130.8' y='231.6' width='5.2' height='18.4' fill='#4c78a8'/>
+<rect x='137.0' y='218.2' width='5.2' height='31.8' fill='#4c78a8'/>
+<rect x='143.2' y='199.8' width='5.2' height='50.2' fill='#4c78a8'/>
+<rect x='149.5' y='182.4' width='5.2' height='67.6' fill='#4c78a8'/>
+<rect x='155.7' y='177.3' width='5.2' height='72.7' fill='#4c78a8'/>
+<rect x='161.9' y='183.4' width='5.2' height='66.6' fill='#4c78a8'/>
+<rect x='168.1' y='180.3' width='5.2' height='69.7' fill='#4c78a8'/>
+<rect x='174.3' y='211.1' width='5.2' height='38.9' fill='#4c78a8'/>
+<rect x='180.5' y='219.3' width='5.2' height='30.7' fill='#4c78a8'/>
+<rect x='186.8' y='215.2' width='5.2' height='34.8' fill='#4c78a8'/>
+<rect x='193.0' y='219.3' width='5.2' height='30.7' fill='#4c78a8'/>
+<rect x='199.2' y='220.3' width='5.2' height='29.7' fill='#4c78a8'/>
+<rect x='205.4' y='232.6' width='5.2' height='17.4' fill='#4c78a8'/>
+<rect x='211.6' y='238.7' width='5.2' height='11.3' fill='#4c78a8'/>
+<rect x='217.8' y='226.4' width='5.2' height='23.6' fill='#4c78a8'/>
+<rect x='224.1' y='229.5' width='5.2' height='20.5' fill='#4c78a8'/>
+<rect x='230.3' y='229.5' width='5.2' height='20.5' fill='#4c78a8'/>
+<rect x='236.5' y='227.5' width='5.2' height='22.5' fill='#4c78a8'/>
+<rect x='242.7' y='233.6' width='5.2' height='16.4' fill='#4c78a8'/>
+<rect x='248.9' y='220.3' width='5.2' height='29.7' fill='#4c78a8'/>
+<rect x='255.1' y='211.1' width='5.2' height='38.9' fill='#4c78a8'/>
+<rect x='261.4' y='160.9' width='5.2' height='89.1' fill='#4c78a8'/>
+<rect x='267.6' y='139.4' width='5.2' height='110.6' fill='#4c78a8'/>
+<rect x='273.8' y='40.0' width='5.2' height='210.0' fill='#e45756'/>
+<rect x='280.0' y='74.8' width='5.2' height='175.2' fill='#4c78a8'/>
+<rect x='286.2' y='100.4' width='5.2' height='149.6' fill='#4c78a8'/>
+<rect x='292.4' y='124.0' width='5.2' height='126.0' fill='#4c78a8'/>
+<rect x='298.6' y='125.0' width='5.2' height='125.0' fill='#4c78a8'/>
+<rect x='304.9' y='175.2' width='5.2' height='74.8' fill='#4c78a8'/>
+<rect x='311.1' y='195.7' width='5.2' height='54.3' fill='#4c78a8'/>
+<rect x='317.3' y='189.6' width='5.2' height='60.4' fill='#4c78a8'/>
+<rect x='323.5' y='198.8' width='5.2' height='51.2' fill='#4c78a8'/>
+<rect x='329.7' y='210.0' width='5.2' height='40.0' fill='#4c78a8'/>
+<rect x='335.9' y='209.0' width='5.2' height='41.0' fill='#4c78a8'/>
+<rect x='342.2' y='204.9' width='5.2' height='45.1' fill='#4c78a8'/>
+<rect x='348.4' y='217.2' width='5.2' height='32.8' fill='#4c78a8'/>
+<rect x='354.6' y='202.9' width='5.2' height='47.1' fill='#4c78a8'/>
+<rect x='360.8' y='196.7' width='5.2' height='53.3' fill='#4c78a8'/>
+<rect x='367.0' y='191.6' width='5.2' height='58.4' fill='#4c78a8'/>
+<rect x='373.2' y='199.8' width='5.2' height='50.2' fill='#4c78a8'/>
+<rect x='379.5' y='201.9' width='5.2' height='48.1' fill='#4c78a8'/>
+<rect x='385.7' y='196.7' width='5.2' height='53.3' fill='#4c78a8'/>
+<rect x='391.9' y='202.9' width='5.2' height='47.1' fill='#4c78a8'/>
+<rect x='398.1' y='204.9' width='5.2' height='45.1' fill='#4c78a8'/>
+<rect x='404.3' y='198.8' width='5.2' height='51.2' fill='#4c78a8'/>
+<rect x='410.5' y='215.2' width='5.2' height='34.8' fill='#4c78a8'/>
+<rect x='416.8' y='211.1' width='5.2' height='38.9' fill='#4c78a8'/>
+<rect x='423.0' y='204.9' width='5.2' height='45.1' fill='#4c78a8'/>
+<rect x='429.2' y='206.0' width='5.2' height='44.0' fill='#4c78a8'/>
+<rect x='435.4' y='198.8' width='5.2' height='51.2' fill='#4c78a8'/>
+<rect x='441.6' y='210.0' width='5.2' height='40.0' fill='#4c78a8'/>
+<rect x='447.8' y='225.4' width='5.2' height='24.6' fill='#4c78a8'/>
+<rect x='454.1' y='226.4' width='5.2' height='23.6' fill='#4c78a8'/>
+<rect x='460.3' y='214.1' width='5.2' height='35.9' fill='#4c78a8'/>
+<rect x='466.5' y='226.4' width='5.2' height='23.6' fill='#4c78a8'/>
+<rect x='472.7' y='227.5' width='5.2' height='22.5' fill='#4c78a8'/>
+<rect x='478.9' y='209.0' width='5.2' height='41.0' fill='#4c78a8'/>
+<rect x='485.1' y='228.5' width='5.2' height='21.5' fill='#4c78a8'/>
+<rect x='491.4' y='222.3' width='5.2' height='27.7' fill='#4c78a8'/>
+<rect x='497.6' y='226.4' width='5.2' height='23.6' fill='#4c78a8'/>
+<rect x='503.8' y='227.5' width='5.2' height='22.5' fill='#4c78a8'/>
+<rect x='510.0' y='227.5' width='5.2' height='22.5' fill='#4c78a8'/>
+<rect x='516.2' y='222.3' width='5.2' height='27.7' fill='#4c78a8'/>
+<rect x='522.4' y='225.4' width='5.2' height='24.6' fill='#4c78a8'/>
+<rect x='528.6' y='224.4' width='5.2' height='25.6' fill='#4c78a8'/>
+<rect x='534.9' y='221.3' width='5.2' height='28.7' fill='#4c78a8'/>
+<rect x='541.1' y='217.2' width='5.2' height='32.8' fill='#4c78a8'/>
+<rect x='547.3' y='218.2' width='5.2' height='31.8' fill='#4c78a8'/>
+<rect x='553.5' y='217.2' width='5.2' height='32.8' fill='#4c78a8'/>
+<rect x='559.7' y='210.0' width='5.2' height='40.0' fill='#4c78a8'/>
+<rect x='565.9' y='223.4' width='5.2' height='26.6' fill='#4c78a8'/>
+<rect x='572.2' y='217.2' width='5.2' height='32.8' fill='#4c78a8'/>
+<rect x='578.4' y='234.6' width='5.2' height='15.4' fill='#4c78a8'/>
+<rect x='584.6' y='234.6' width='5.2' height='15.4' fill='#4c78a8'/>
+<rect x='590.8' y='237.7' width='5.2' height='12.3' fill='#4c78a8'/>
+<rect x='597.0' y='230.5' width='5.2' height='19.5' fill='#4c78a8'/>
+<rect x='603.2' y='231.6' width='5.2' height='18.4' fill='#4c78a8'/>
+<rect x='609.5' y='230.5' width='5.2' height='19.5' fill='#4c78a8'/>
+<rect x='615.7' y='226.4' width='5.2' height='23.6' fill='#4c78a8'/>
+<rect x='621.9' y='230.5' width='5.2' height='19.5' fill='#4c78a8'/>
+<rect x='628.1' y='238.7' width='5.2' height='11.3' fill='#4c78a8'/>
+<rect x='634.3' y='243.9' width='5.2' height='6.1' fill='#4c78a8'/>
+<rect x='640.5' y='233.6' width='5.2' height='16.4' fill='#4c78a8'/>
+<rect x='646.8' y='233.6' width='5.2' height='16.4' fill='#4c78a8'/>
+<rect x='653.0' y='237.7' width='5.2' height='12.3' fill='#4c78a8'/>
+<rect x='659.2' y='202.9' width='5.2' height='47.1' fill='#4c78a8'/>
+<rect x='665.4' y='152.7' width='5.2' height='97.3' fill='#4c78a8'/>
+<rect x='671.6' y='189.6' width='5.2' height='60.4' fill='#4c78a8'/>
+<rect x='677.8' y='187.5' width='5.2' height='62.5' fill='#4c78a8'/>
+<rect x='684.1' y='193.7' width='5.2' height='56.3' fill='#4c78a8'/>
+<rect x='690.3' y='196.7' width='5.2' height='53.3' fill='#4c78a8'/>
+<rect x='696.5' y='226.4' width='5.2' height='23.6' fill='#4c78a8'/>
+<rect x='702.7' y='239.8' width='5.2' height='10.2' fill='#4c78a8'/>
+<rect x='708.9' y='244.9' width='5.2' height='5.1' fill='#4c78a8'/>
+<rect x='715.1' y='243.9' width='5.2' height='6.1' fill='#4c78a8'/>
+<rect x='721.4' y='250.0' width='5.2' height='0.0' fill='#4c78a8'/>
+<rect x='727.6' y='250.0' width='5.2' height='0.0' fill='#4c78a8'/>
+<rect x='733.8' y='249.0' width='5.2' height='1.0' fill='#4c78a8'/>
+<line x1='74.9' y1='250' x2='74.9' y2='255' stroke='#8a8a8a'/>
+<text x='74.9' y='270' text-anchor='middle'>-7 m</text>
+<line x1='137.0' y1='250' x2='137.0' y2='255' stroke='#8a8a8a'/>
+<text x='137.0' y='270' text-anchor='middle'>-6 m</text>
+<line x1='199.2' y1='250' x2='199.2' y2='255' stroke='#8a8a8a'/>
+<text x='199.2' y='270' text-anchor='middle'>-5 m</text>
+<line x1='261.4' y1='250' x2='261.4' y2='255' stroke='#8a8a8a'/>
+<text x='261.4' y='270' text-anchor='middle'>-4 m</text>
+<line x1='323.5' y1='250' x2='323.5' y2='255' stroke='#8a8a8a'/>
+<text x='323.5' y='270' text-anchor='middle'>-3 m</text>
+<line x1='385.7' y1='250' x2='385.7' y2='255' stroke='#8a8a8a'/>
+<text x='385.7' y='270' text-anchor='middle'>-2 m</text>
+<line x1='447.8' y1='250' x2='447.8' y2='255' stroke='#8a8a8a'/>
+<text x='447.8' y='270' text-anchor='middle'>-1 m</text>
+<line x1='510.0' y1='250' x2='510.0' y2='255' stroke='#8a8a8a'/>
+<text x='510.0' y='270' text-anchor='middle'>0 m</text>
+<line x1='572.2' y1='250' x2='572.2' y2='255' stroke='#8a8a8a'/>
+<text x='572.2' y='270' text-anchor='middle'>1 m</text>
+<line x1='634.3' y1='250' x2='634.3' y2='255' stroke='#8a8a8a'/>
+<text x='634.3' y='270' text-anchor='middle'>2 m</text>
+<line x1='696.5' y1='250' x2='696.5' y2='255' stroke='#8a8a8a'/>
+<text x='696.5' y='270' text-anchor='middle'>3 m</text>
+<text x='284.9' y='54' fill='#e45756'>the wall: a peak, but with a thick tail toward the camera</text>
+<text x='50' y='292' fill='#8a8a8a'>Each bar is a 10 cm slice. A perfect wall would be one thin bar.</text>
+</svg>
