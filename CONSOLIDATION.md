@@ -128,6 +128,10 @@ A simple regressor trained on ground-truth houses outputs ±X%. **The validation
 8. FTO review scope and timing.
 9. iOS-first, or both platforms from day one?
 
+## 10b. Native ARKit spike (Sep 25, 2026)
+
+`ARKit_WallDetection/` now holds **SidingsAR**, a RealityKit app that shows native `ARPlaneAnchor` output (vertical + horizontal, classification) with NMS de-duplication, EMA/hysteresis smoothing and magenta anchor markers. The goal is to see what ARKit gives us for free before custom RANSAC. Device findings (LiDAR vs. non-LiDAR, range) are pending; see its README.
+
 ## 11. Document index
 
 - `00-consolidation.md` (this file): current state, decisions, plan

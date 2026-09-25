@@ -1,5 +1,7 @@
 # TODO: ARKit Plane PoC v2 (RealityKit)
 
+> **Status 2026-09-25:** T1–T8 are implemented. `swift test` passes (27 tests) and the xcodebuild build succeeds. **Still open:** all manual on-device checks (screenshots, FPS, flicker, LiDAR vs. non-LiDAR notes). Tick them here as you verify.
+
 See `tasks/plan.md` for the design decisions. Paths below are relative to `ARKit_WallDetection/`.
 
 Commands:
