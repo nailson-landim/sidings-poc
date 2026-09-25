@@ -212,3 +212,22 @@ The renderer uses the smoothed values for the label and marker positions. The ra
 ### Checkpoint C
 - [ ] All acceptance criteria met
 - [ ] Findings documented; ready for review
+
+---
+
+## Request 2 (2026-09-25): debug points + memory
+
+- [x] R2.1: Bring back ARKit feature points (`ARView.debugOptions.showFeaturePoints`, on by default). Add a Debug menu (points, markers, hide duplicates, render stats)
+- [x] R2.2: Show process memory (`phys_footprint`) in the HUD at 1 Hz
+- [x] R2.3: Replace 3D text labels with UIKit screen-space labels
+- [x] R2.4: Bake boundary markers into one mesh per plane; no markers or labels for suppressed planes
+- [x] R2.5: Fill meshes updated in place (`replace(with:)`), gated by `RebuildGate` (4 Hz visible / 1 Hz suppressed), materials cached
+- [x] R2.6: Anchor callbacks only mark dirty; a 10 Hz frame tick resolves and renders changed planes
+- [x] R2.7: Disable unused ARView post-processing
+- [x] Tests: `RenderBudgetTests` (Throttle, RebuildGate, PointMarkerMesh); `swift test` 36/36, build clean
+
+### Checkpoint R2 (device)
+- [ ] Same room as `AR_APP.PNG`, ~1 min scan: HUD "mem MB" stays flat instead of climbing. Record the number in the README
+- [ ] Feature points visible; the toggle works
+- [ ] Labels follow planes smoothly while moving; no labels on dimmed duplicates
+- [ ] Boundary markers appear on a plane that wins NMS later

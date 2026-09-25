@@ -42,6 +42,10 @@ struct ARViewContainer: UIViewRepresentable {
 
     func makeUIView(context: Context) -> ARView {
         let arView = controller.arView
+        // Labels sit above the 3D content but below the coaching overlay.
+        let labels = controller.labelView
+        labels.frame = arView.bounds
+        arView.addSubview(labels)
         let coaching = ARCoachingOverlayView()
         coaching.session = arView.session
         coaching.goal = .anyPlane

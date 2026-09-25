@@ -7,7 +7,8 @@ struct HUDView: View {
         VStack(spacing: 8) {
             HStack {
                 stat("planes", "\(controller.keptCount)/\(controller.rawCount)")
-                stat("features", "\(controller.featurePointCount)")
+                stat("points", "\(controller.featurePointCount)")
+                stat("mem MB", String(format: "%.0f", controller.memoryMB))
                 stat("tracking", controller.trackingName)
                 stat("LiDAR", controller.isLiDARDevice ? "yes" : "no")
             }
@@ -16,13 +17,19 @@ struct HUDView: View {
             }
             .pickerStyle(.segmented)
             HStack {
-                Toggle("Markers", isOn: $controller.showMarkers)
-                Toggle("Hide dupes", isOn: $controller.hideSuppressed)
+                Menu {
+                    Toggle("Feature points", isOn: $controller.showFeaturePoints)
+                    Toggle("Anchor markers", isOn: $controller.showMarkers)
+                    Toggle("Hide duplicates", isOn: $controller.hideSuppressed)
+                    Toggle("Render statistics", isOn: $controller.showStatistics)
+                } label: {
+                    Label("Debug", systemImage: "ladybug")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
                 Button("Reset", systemImage: "arrow.counterclockwise") { controller.restart() }
                     .buttonStyle(.borderedProminent)
-                    .labelStyle(.iconOnly)
             }
-            .toggleStyle(.button)
             .font(.caption)
         }
         .padding(10)

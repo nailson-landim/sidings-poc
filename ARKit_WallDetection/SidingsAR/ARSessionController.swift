@@ -1,10 +1,14 @@
 import ARKit
+import Combine
 import Observation
 import OSLog
 import PlaneKit
 import RealityKit
 
 /// Owns the ARView/ARSession, feeds plane anchors through `PlaneTracker` (NMS + smoothing) and drives `PlaneRenderer`.
+///
+/// Anchor callbacks only record *what changed*; the actual resolve + render runs on a throttled frame tick and touches
+/// only dirty planes or planes whose suppression flipped.
 @Observable
 @MainActor
 final class ARSessionController: NSObject {
@@ -14,37 +18,69 @@ final class ARSessionController: NSObject {
         didSet { if mode != oldValue { restart() } }
     }
     var showMarkers = true {
-        didSet { renderer.showMarkers = showMarkers }
+        didSet {
+            renderer.showMarkers = showMarkers
+            renderAll()
+        }
     }
     var hideSuppressed = false {
         didSet { renderAll() }
     }
+    var showFeaturePoints = true {
+        didSet { applyDebugOptions() }
+    }
+    var showStatistics = false {
+        didSet { applyDebugOptions() }
+    }
     private(set) var rawCount = 0
     private(set) var keptCount = 0
     private(set) var featurePointCount = 0
+    private(set) var memoryMB: Double = 0
     private(set) var trackingName = "n/a"
     private(set) var banner: String?
     var errorMessage: String?
 
     // MARK: Internals
 
+    /// Resolve/render cadence. Also paces NMS hysteresis (`challengerFrames` resolves ≈ 0.5 s).
+    static let resolveInterval: TimeInterval = 0.1
+    static let hudInterval: TimeInterval = 0.1
+    static let memoryInterval: TimeInterval = 1.0
+
     @ObservationIgnored let arView: ARView
     @ObservationIgnored private let renderer: PlaneRenderer
     @ObservationIgnored private let tracker = PlaneTracker()
     @ObservationIgnored private var anchors: [UUID: ARPlaneAnchor] = [:]
-    @ObservationIgnored private var lastHUDTick: TimeInterval = 0
+    @ObservationIgnored private var dirty: Set<UUID> = []
+    @ObservationIgnored private var needsResolve = false
+    @ObservationIgnored private var resolveThrottle = Throttle(interval: ARSessionController.resolveInterval)
+    @ObservationIgnored private var hudThrottle = Throttle(interval: ARSessionController.hudInterval)
+    @ObservationIgnored private var memoryThrottle = Throttle(interval: ARSessionController.memoryInterval)
+    @ObservationIgnored private var sceneUpdate: (any Cancellable)?
+    /// Last `ARFrame.timestamp`; the single clock for throttles and rebuild gates.
+    @ObservationIgnored private var lastFrameTime: TimeInterval = 0
     @ObservationIgnored private var interruptionBanner: String?
     @ObservationIgnored private let logger = Logger(subsystem: "br.com.neuralnexgen.sidingsar", category: "session")
-
-    static let hudInterval: TimeInterval = 0.1
 
     override init() {
         arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
         renderer = PlaneRenderer(scene: arView.scene)
         super.init()
         arView.session.delegate = self
-        arView.renderOptions.insert(.disableMotionBlur)
+        // Everything we draw is unlit debug geometry: skip post-processing passes and their full-screen buffers.
+        arView.renderOptions = [
+            .disableMotionBlur, .disableDepthOfField, .disableHDR, .disableCameraGrain,
+            .disableGroundingShadows, .disableAREnvironmentLighting, .disablePersonOcclusion, .disableFaceMesh
+        ]
+        applyDebugOptions()
+        sceneUpdate = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] _ in
+            guard let self else { return }
+            self.renderer.labels.layout(in: self.arView)
+        }
     }
+
+    /// Screen-space label layer; ContentView inserts it above the AR content.
+    var labelView: UIView { renderer.labels.view }
 
     var isLiDARDevice: Bool {
         ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
@@ -63,6 +99,8 @@ final class ARSessionController: NSObject {
         renderer.removeAll()
         tracker.reset()
         anchors.removeAll()
+        dirty.removeAll()
+        needsResolve = false
         interruptionBanner = nil
         publishCounts()
         run(options: [.resetTracking, .removeExistingAnchors])
@@ -80,6 +118,13 @@ final class ARSessionController: NSObject {
         arView.session.run(config, options: options)
     }
 
+    private func applyDebugOptions() {
+        var options: ARView.DebugOptions = []
+        if showFeaturePoints { options.insert(.showFeaturePoints) }
+        if showStatistics { options.insert(.showStatistics) }
+        arView.debugOptions = options
+    }
+
     // MARK: Anchor pipeline
 
     private func ingest(_ planeAnchors: [ARPlaneAnchor], now: TimeInterval) {
@@ -87,27 +132,45 @@ final class ARSessionController: NSObject {
             anchors[anchor.identifier] = anchor
             let previous = tracker.observations[anchor.identifier]
             tracker.upsert(PlaneObservation(anchor: anchor, previous: previous, now: now))
+            dirty.insert(anchor.identifier)
         }
+        needsResolve = true
     }
 
-    /// Re-resolves NMS and refreshes every plane, since one update can flip another plane's state.
-    private func resolveAndRender() {
-        tracker.resolve()
-        renderAll()
+    /// Re-resolves NMS, then renders dirty planes plus any plane whose suppression flipped.
+    private func resolveAndRender(now: TimeInterval) {
+        var toRender = dirty
+        if needsResolve {
+            let before = tracker.states.mapValues(\.isSuppressed)
+            tracker.resolve()
+            for (id, state) in tracker.states where before[id] != state.isSuppressed {
+                toRender.insert(id)
+            }
+            needsResolve = false
+        }
+        dirty.removeAll()
+        for id in toRender where render(id: id, now: now) {
+            dirty.insert(id) // geometry change deferred by the rebuild gate; retry next tick
+        }
         publishCounts()
     }
 
+    /// - Returns: true when the plane still has a deferred geometry update.
+    private func render(id: UUID, now: TimeInterval) -> Bool {
+        guard let anchor = anchors[id], let observation = tracker.observations[id], let state = tracker.states[id] else { return false }
+        return renderer.update(anchor: anchor, observation: observation, state: state, hideSuppressed: hideSuppressed, now: now)
+    }
+
+    /// Full refresh, only for HUD toggles.
     private func renderAll() {
-        let now = CACurrentMediaTime()
-        for (id, anchor) in anchors {
-            guard let observation = tracker.observations[id], let state = tracker.states[id] else { continue }
-            renderer.update(anchor: anchor, observation: observation, state: state, hideSuppressed: hideSuppressed, now: now)
+        for id in anchors.keys where render(id: id, now: lastFrameTime) {
+            dirty.insert(id)
         }
     }
 
     private func publishCounts() {
-        rawCount = anchors.count
-        keptCount = tracker.keptCount
+        if rawCount != anchors.count { rawCount = anchors.count }
+        if keptCount != tracker.keptCount { keptCount = tracker.keptCount }
     }
 }
 
@@ -118,34 +181,42 @@ extension ARSessionController: @preconcurrency ARSessionDelegate {
         let planes = anchors.compactMap { $0 as? ARPlaneAnchor }
         guard !planes.isEmpty else { return }
         planes.forEach(renderer.add)
-        ingest(planes, now: CACurrentMediaTime())
-        resolveAndRender()
+        ingest(planes, now: lastFrameTime)
     }
 
     func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
         let planes = anchors.compactMap { $0 as? ARPlaneAnchor }
         guard !planes.isEmpty else { return }
-        ingest(planes, now: CACurrentMediaTime())
-        resolveAndRender()
+        ingest(planes, now: lastFrameTime)
     }
 
-    /// ARKit reports plane merges here: the absorbed anchor is removed.
+    /// ARKit reports plane merges here: the absorbed anchor is removed. Visuals go away immediately.
     func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
         let planes = anchors.compactMap { $0 as? ARPlaneAnchor }
         guard !planes.isEmpty else { return }
         for plane in planes {
             self.anchors[plane.identifier] = nil
+            dirty.remove(plane.identifier)
             tracker.remove(id: plane.identifier)
             renderer.remove(id: plane.identifier)
         }
-        resolveAndRender()
+        needsResolve = true
     }
 
+    /// Frame tick: throttled resolve/render, HUD and memory readout. Never retains the frame.
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         let now = frame.timestamp
-        guard now - lastHUDTick >= Self.hudInterval else { return }
-        lastHUDTick = now
-        featurePointCount = frame.rawFeaturePoints?.points.count ?? 0
+        lastFrameTime = now
+        if (needsResolve || !dirty.isEmpty) && resolveThrottle.fire(now: now) {
+            resolveAndRender(now: now)
+        }
+        if hudThrottle.fire(now: now) {
+            let points = frame.rawFeaturePoints?.points.count ?? 0
+            if points != featurePointCount { featurePointCount = points }
+        }
+        if memoryThrottle.fire(now: now), let mb = MemoryFootprint.currentMB() {
+            memoryMB = mb
+        }
     }
 
     func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {

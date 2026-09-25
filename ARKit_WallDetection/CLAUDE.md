@@ -8,3 +8,8 @@
 - Logging: `os.Logger` (subsystem `br.com.neuralnexgen.sidingsar`), no `print`.
 - ARKit doesn't run in the Simulator; every visual check needs a device.
 - Plan and task status: `tasks/plan.md`, `tasks/todo.md`.
+- Memory rules (see the README "Memory budget" section):
+  - don't generate `MeshResource`s per update; use `DynamicMesh` (`replace(with:)`) behind a `RebuildGate`
+  - no 3D text; labels go through `LabelOverlay`
+  - batch many markers into one mesh
+  - anchor callbacks only mark planes dirty; work happens on the throttled frame tick
