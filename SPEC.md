@@ -214,7 +214,7 @@ In Blender these become timeline markers.
 - `video.mov`: HEVC, at the captured-image resolution (typically 1920 × 1440), in landscape sensor orientation, with no rotation metadata.
 - The video frame for log frame `idx` has presentation time `idx / video_fps`. A frame without an image leaves a gap in the timestamps and has `has_image = 0`, so video time always maps back to `idx`.
 - A keyframe at least every 0.5 s of images (30 at 60 fps), so reaching any frame decodes at most 30 images and seeking in Blender stays fast. The encoder counts images, not time, so skipped images stretch the gap in time (T1: 0.67 s around a 10-frame hole).
-- When the first image isn't log frame 0, `AVAssetWriter` keeps the gap as an empty edit at the start of the track. FFmpeg applies it (the stream's `start_time` is the gap), but `AVAssetReaderTrackOutput` reports media time without it (T1, 2026-09-28). T2 checks what Blender does with it.
+- When the first image isn't log frame 0, `AVAssetWriter` keeps the gap as an empty edit at the start of the track. FFmpeg applies it (the stream's `start_time` is the gap), but `AVAssetReaderTrackOutput` reports media time without it (T1, 2026-09-28). **Blender drops it** (T2), so the importer places the clip at the first log frame with an image (§6, §15 R2).
 - Written as a fragmented movie (`movieFragmentInterval` ≈ 1 s), so a killed recording still plays up to its last fragment.
 
 ### 3.5 Versioning
@@ -335,7 +335,7 @@ Operators are thin: each calls one core function, so the CLI and Blender can't d
   - sets the frame range to `1 … frames_logged`
   - applies the ARKit → Blender axis conversion (§3.2)
 - **What it builds,** in one collection per session:
-  - **Camera:** keyframed pose per frame; focal length and shift from the intrinsics; resolution from the image size. **The video is its background image** (a movie clip), so looking through the camera shows the frame with our points and planes on top.
+  - **Camera:** keyframed pose per frame; focal length and shift from the intrinsics; resolution from the image size. **The video is its background image** (a movie clip), so looking through the camera shows the frame with our points and planes on top. The clip starts at timeline frame `1 + <first log frame with has_image = 1>`, because Blender drops a leading gap in the video but keeps later ones (§15 R2).
   - **Camera trail:** a static polyline.
   - **Layers** that follow the current frame:
     - raw points
@@ -574,7 +574,7 @@ def fit_vertical_plane(
 | # | Risk | Mitigation |
 |---|---|---|
 | R1 | HEVC at 1440p60 plus feature-point logging overloads the iPhone 13: dropped images, heat, worse tracking | Hardware encoder, bounded pools, drops and thermal state logged. Fallback: a 30 fps video format, or an image every other frame (the schema already allows `has_image = 0`). **Spike this first.** |
-| R2 | Blender's movie clips mishandle timestamp gaps or seek slowly in HEVC, so video and timeline drift | Keyframe at least every 0.5 s; Blender proxies as a fallback. **Spike this first** with a synthetic video that has gaps. |
+| R2 | Blender's movie clips mishandle timestamp gaps or seek slowly in HEVC, so video and timeline drift | **Answered by T2 (2026-09-28).** Blender 5.0.1 (MovieClip through the compositor, and sequencer strips, default timecode) **drops a leading gap**: the first image lands on the clip's first frame. **Gaps later in the file are kept**: frames inside a gap hold the previous image. **Fix, in the importer:** `clip.frame_start = 1 + <first log frame with has_image = 1>`. That gave 0 mismatches over 72 sampled frames, including every frame right after a gap. Random access costs about 50 ms of decoding per frame, the same as in-order access (keyframes ≤ 30 images apart), so no proxies or timecode index are needed. |
 | R3 | Too much memory to show any frame's averaged cloud (it can reach tens of thousands of points, across thousands of frames) | Snapshots only at the fit cadence, stored as changes since the last snapshot, with periodic full snapshots. Measured against S12. |
 | R4 | Pure Python is too slow | Vectorized numpy, fitting every N frames, subsampling. Measured against S9. |
 | R5 | Relocalization shifts the world frame mid-session, so poses and points jump | Logged as events and shown as markers. The lab shows the jumps rather than hiding them. Anchor-relative storage (CONSOLIDATION §4) is a product concern, not a concern for this raw log. |
@@ -713,11 +713,12 @@ Tick a box only when its check has passed. Boxes marked **Device** or **User** a
 
 A headless Blender script loads the T1 spike video as a movie clip. For at least 50 sampled frames, including the ones right after gaps, it checks that Blender frame `idx + 1` shows image `idx`. It tries timecode *None* and *Record Run*, and times random seeks. Then the user scrubs it in the Blender UI.
 
-- [ ] One setting gives 0 mismatches. It's recorded in §15 R2 with the seek times.
-- [ ] The median random seek is ≤ 100 ms, or the need for proxies is recorded.
-- [ ] If no setting works, a fallback is chosen and logged: the recorder repeats the last image for skipped frames, or the importer maps frames through a lookup.
+- [x] One setting gives 0 mismatches. It's recorded in §15 R2 with the seek times.
+- [x] The median random seek is ≤ 100 ms, or the need for proxies is recorded.
+- [x] If no setting works, a fallback is chosen and logged: the recorder repeats the last image for skipped frames, or the importer maps frames through a lookup. *(Not needed: placing the clip at the first image works.)*
 - [ ] **User:** scrubbing the clip in Blender looks right.
-- **Verify:** `$BLENDER --background --factory-startup --python PlaneLab/spikes/r2_video_alignment.py -- <video>`
+- **Verify:** `$BLENDER --background --factory-startup --python PlaneLab/spikes/r2_video_alignment.py -- <video> <manifest>`
+- **Result (2026-09-28):** the automated part is done. Blender drops a leading gap and keeps later ones; the fix is `clip.frame_start = 1 + first image` (0 of 72 frames wrong on both the camera-background and the sequencer paths). Decoding is about 50 ms per random frame, with no proxies. Details are in §15 R2 and `PlaneLab/spikes/README.md`. The scrub file for the user check is `~/PlaneLab/spikes/r2/r2_scrub.blend`.
 - **Depends on:** T1.
 - **Files:** `PlaneLab/spikes/r2_video_alignment.py`, `PlaneLab/spikes/README.md`, `SPEC.md`
 
@@ -806,7 +807,7 @@ The extension layout from P6: manifest, the `vendor/planelab` link, `scripts/bui
 
 #### T9. Blender: the video behind the camera · S · S11
 
-The recording's `video.mov` becomes the camera's background movie clip, using the setting from T2. It's sized to the captured image, and frames with `has_image = 0` are handled.
+The recording's `video.mov` becomes the camera's background movie clip, starting at timeline frame `1 + <first log frame with has_image = 1>` (T2). It's sized to the captured image. Later `has_image = 0` gaps need nothing: Blender holds the previous image.
 
 - [ ] Headless: on the fixture video, frame `idx + 1` shows image `idx` (P4 blocks).
 - [ ] **User (S11):** on the T7 recording, looking through the camera, the raw points sit on image features across the whole timeline.
