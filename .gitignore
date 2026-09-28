@@ -11,3 +11,13 @@ build/
 # The contract fixture is the one exception.
 *.planelab
 !session-format/fixtures/**/*.planelab
+
+# Python (PlaneLab)
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/

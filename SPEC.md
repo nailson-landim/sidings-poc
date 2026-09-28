@@ -792,10 +792,15 @@ Minimal glue behind a temporary HUD toggle, *Rec video*. Inside the frame delega
 
 Creates `PlaneLab/`: `pyproject.toml`, a pinned `requirements.txt` (numpy 1.26.4, pytest, pytest-cov, ruff), a `.venv` on Python 3.11, ruff settings and logging (P8). `planelab.session` reads `meta`, frames on demand (`numpy.frombuffer`), anchors, location, heading and events. It refuses unknown versions and accepts a zip. `planelab.schema` embeds the DDL (P2). Adds the CLI's `info` command, and adds `*.planelab`, `.venv/` and `dist/` to the root `.gitignore`.
 
-- [ ] The contract fixture decodes to `expected.json`, the same values Swift checks.
-- [ ] `schema_version = 2` is refused with a message naming the version found and the versions supported.
-- [ ] `python -m planelab info` works on the fixture folder and on its zip.
+- [x] The contract fixture decodes to `expected.json`, the same values Swift checks.
+- [x] `schema_version = 2` is refused with a message naming the version found and the versions supported.
+- [x] `python -m planelab info` works on the fixture folder and on its zip.
 - **Verify:** `pytest --cov=planelab --cov-fail-under=85`; `ruff check . && ruff format --check .`
+- **Result (2026-09-28):** done. 29 tests with 98 % coverage; `ruff` is clean.
+  - The same `info` runs unchanged under Blender's own `python3.11`.
+  - The reader returns row-major numpy matrices, plus `first_image_idx()` and `delivered_fps()` for the importer (§15 R2, §3.4). `info.summarize()` feeds both the CLI and the future Blender panel.
+  - Zips extract once into `~/PlaneLab/cache/`, with the folder at the root of the zip or one level down.
+  - The package installs editable (`pip install -e . --no-deps`); pytest uses `pythonpath = src`.
 - **Depends on:** T4.
 - **Files:** `PlaneLab/pyproject.toml`, `PlaneLab/requirements.txt`, `PlaneLab/src/planelab/{__main__,cli,session,schema,log}.py`, `PlaneLab/tests/{test_session,test_cli}.py`, `.gitignore`
 
