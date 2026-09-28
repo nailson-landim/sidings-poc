@@ -313,6 +313,7 @@ python -m planelab info  <bundle>                            # duration, frames,
 python -m planelab run   <bundle> --config configs/recall.toml --name recall-01 [--progress]
 python -m planelab synth <out.planelab> --scene facade --seed 7   # synthetic session, no video; scenes: facade, edges, room
 python -m planelab export <bundle> --run recall-01 --csv out.csv  # per-frame readouts
+python -m planelab peek  <bundle> [--csv frames.csv]          # readable copy: every BLOB decoded, every column explained
 ```
 
 `--progress` prints one JSON line per step (`{"frame": 1200, "of": 7200}`). Blender's Recompute reads it (§6).
@@ -327,6 +328,7 @@ python -m planelab export <bundle> --run recall-01 --csv out.csv  # per-frame re
 | `run` | **Recompute** |
 | `synth` | *File › New › Plane Lab Synthetic Session* (scene, seed) |
 | `export` | **Export CSV** in the panel |
+| `peek` | *(Should)* **Write readable copy** in the panel (P15) |
 | — | *(Should)* a session browser for the sessions folder (set in the add-on preferences; default `~/PlaneLab/sessions/`) and a run picker |
 
 Operators are thin: each calls one core function, so the CLI and Blender can't drift apart.
@@ -663,6 +665,7 @@ Minor decisions made while planning, under the user's "minor decisions I trust y
 | P12 | The results store keeps a full snapshot of the averaged cloud every 60 fits, with changes in between (R3). T20 measures this against S12 and adjusts it. | Starting point for R3 |
 | P13 | ARKit → record conversions for the recorder live in one file, `SidingsAR/Recording/ARRecordAdapter.swift`. The SidingsAR rule "`PlaneAnchorAdapter` is the only place that converts ARKit types" becomes "`PlaneAnchorAdapter` (viewer) and `ARRecordAdapter` (recorder)". | Keeps the rule's intent: one place per consumer |
 | P14 | **Commits** (user, 2026-09-28): one commit per task once its checks are green, with the attribution trailer, without asking each time. Never push, never commit recordings. | User's choice |
+| P15 | **`planelab peek`** (user request, 2026-09-28: "a table on the sqlite file to peek the data, structured so I can catch all details"): it writes `<bundle>/lab/peek.sqlite` with every BLOB decoded into columns, enums as words, per-point and per-feature tables, and an `_about` table explaining every column (a test enforces that). It's a separate file because recordings are immutable (§3.2). | The user needs to see raw data before the Blender import exists |
 
 ### 17.5 Risks found while planning
 
@@ -865,6 +868,8 @@ The recording's `video.mov` becomes the camera's background movie clip, starting
 ### Phase 2A: Recorder complete (Swift, device)
 
 #### T10. Stop reasons, events and low disk · M · §4 R3, R9
+
+*Follow-up from T7:* warm the pixel pool when Record is tapped. The first recording lost images for frames 5–9, and ARKit skipped two frames at frame 10 (a 50 ms gap), most likely while the first pool buffers were being allocated during capture.
 
 The recording stops and finalizes, with the matching `stop_reason`, on any of: Reset, a detection-mode change, an interruption, going to the background, or a session error. Tracking-state changes, interruptions and relocalization become `event` rows. Recording also stops when free space falls below `lowDiskBytes` (`low_disk`). The reason mapping and the disk rule are pure logic in PlaneKit (P10).
 

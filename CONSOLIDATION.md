@@ -152,6 +152,9 @@ A simple regressor trained on ground-truth houses outputs ±X%. **The validation
   - Copying an image costs under 1 ms at p95.
   - The session takes about 82 MB/min, and the plane viewer didn't stutter.
 - **What it means for capture:** a hot phone halves the evidence per second. Capture guidance should keep the phone cool (no charging, shade), and the lab must time things from `ARFrame.timestamp`, never from an assumed rate.
+- **What `planelab peek` shows in the first real recording** (48 s indoors):
+  - **The intrinsics drift with autofocus:** fx went from 1524.0 to 1527.4 px, so they must be taken per frame, never as a constant.
+  - **ARKit's position for a given feature id moves by about 2.5–3 cm RMS** across its sightings (12,177 ids, each seen about 59 times on average). That's the noise the lab's averaging has to remove before fitting planes.
 - **Still open:** 60 Hz over a full 5-minute session, whether recording itself pushes the phone into *serious*, and memory growth (300 → 440 MB in a minute in the spike). These are checked at Plane Lab Checkpoint 2A.
 
 ## 11. Document index

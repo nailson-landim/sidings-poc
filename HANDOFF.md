@@ -60,6 +60,7 @@ Each one is also recorded where it belongs.
 - **Xcode's generated Info.plist silently drops `UIFileSharingEnabled`.** It lives in `ARKit_WallDetection/SidingsAR-Info.plist`.
 - **Finder's Files tab can't open an app's folders.** Pull files with `devicectl` instead (below).
 - **Blender headless:** renders only follow `frame_set` on the *context* scene.
+- **The first real recording** (`peek`): intrinsics drift with autofocus (fx 1524.0 → 1527.4); a feature id's position jitters about 2.5–3 cm RMS; startup lost images for frames 5–9 plus a 50 ms gap at frame 10. Warming the pool at Record is a T10 follow-up.
 - **This Mac's locale uses a decimal comma.** Run `awk` over `ffprobe` output with `LC_ALL=C`.
 
 ## Working agreements (from the user)
@@ -88,6 +89,7 @@ ruff check . && ruff format --check . && pytest --cov=planelab --cov-fail-under=
 python -m planelab info <bundle>
 
 # Pull sessions from the phone: see the root README, "Recordings: phone → Mac"
+# See everything in one: python -m planelab peek <bundle>  -> <bundle>/lab/peek.sqlite (decoded; _about explains columns)
 # (iPhone 13 UDID 782F0FCC-0A00-5F6F-82AE-AC575194E5CA; a 13 Pro is also paired: `xcrun devicectl list devices`)
 
 # Regenerate the contract fixture (only after a deliberate format change + schema_version bump)

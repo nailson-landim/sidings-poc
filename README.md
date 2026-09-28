@@ -70,8 +70,9 @@ NAME=20260928-160746.planelab
 xcrun devicectl device copy from --device $DEVICE "${APP[@]}" \
   --source Documents/Sessions/$NAME --destination ~/PlaneLab/sessions/$NAME
 
-# Summarize it
+# Summarize it, then write a readable copy with every value decoded (see PlaneLab/README.md, "peek")
 cd PlaneLab && source .venv/bin/activate && python -m planelab info ~/PlaneLab/sessions/$NAME
+python -m planelab peek ~/PlaneLab/sessions/$NAME          # -> ~/PlaneLab/sessions/$NAME/lab/peek.sqlite
 ```
 
 `"${APP[@]}"` passes the array as separate arguments in both zsh and bash. Spike outputs live under `Documents/Spikes/` and are pulled the same way.
