@@ -21,6 +21,7 @@ pip install -e . --no-deps        # makes the `planelab` command available
 python -m planelab info <bundle>          # a .planelab folder, or a zip of one
 python -m planelab info <bundle> --json   # machine-readable
 python -m planelab peek <bundle> [--csv frames.csv]   # readable copy: <bundle>/lab/peek.sqlite
+python -m planelab blend <bundle>                     # ready-to-open <bundle>/lab/replay.blend
 ```
 
 ### `peek`: see everything in a recording
@@ -80,12 +81,9 @@ Importing the same recording again replaces it. The user's 48 s recording (2,863
 
 Install that zip with **Blender › Settings › Get Extensions › ⌄ › Install from Disk**.
 
-`scripts/replay_blend.py` saves a ready-to-open `<bundle>/lab/replay.blend` of a recording (the import in an empty scene, opening in camera view):
+`python -m planelab blend <bundle>` saves a ready-to-open `<bundle>/lab/replay.blend` of a recording, taking about 1 s. It runs Blender headless with `scripts/replay_blend.py`, and the file holds the import in an empty scene that opens in camera view. Blender comes from `--blender`, then `$BLENDER`, then `/Applications/Blender.app`.
 
-```bash
-/Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup \
-  --python scripts/replay_blend.py -- ~/PlaneLab/sessions/<name>.planelab
-``` For development, a local repository pointing at `PlaneLab/blender/` loads the source directly, so *Reload Scripts* picks up edits. In the repository, `vendor/planelab` is a symlink to `src/planelab`, and the build script copies the real files into the zip (SPEC §17.4 P6).
+**Dev link** (set up on 2026-09-28): add `PlaneLab/blender/` as a local repository in **Settings › Get Extensions › Repositories › + › Add Local Repository**, with a custom directory, then enable **Plane Lab**. Blender then runs the repository's code, and code changes load with **F3 › Reload Scripts**. For development, a local repository pointing at `PlaneLab/blender/` loads the source directly, so *Reload Scripts* picks up edits. In the repository, `vendor/planelab` is a symlink to `src/planelab`, and the build script copies the real files into the zip (SPEC §17.4 P6).
 
 `tests/test_blender.py` runs the real Blender headless. It imports the contract fixture and checks the camera pose, lens and points against the core's own conversion. It also builds the zip and installs it into a throwaway Blender profile. It's skipped when Blender isn't installed.
 
@@ -127,7 +125,7 @@ PlaneLab/
 
 ```bash
 ruff check . && ruff format --check .
-pytest --cov=planelab --cov-fail-under=85     # 61 tests incl. 2 headless-Blender tests, 99 % coverage
+pytest --cov=planelab --cov-fail-under=85     # 64 tests incl. headless-Blender ones, about 99 % coverage
 ```
 
 The contract test reads `../session-format/fixtures/v1/`, written by the Swift recorder, and compares every table with `expected.json` (SPEC S7). The core also runs under Blender's own interpreter:

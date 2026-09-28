@@ -73,7 +73,10 @@ xcrun devicectl device copy from --device $DEVICE "${APP[@]}" \
 # Summarize it, then write a readable copy with every value decoded (see PlaneLab/README.md, "peek")
 cd PlaneLab && source .venv/bin/activate && python -m planelab info ~/PlaneLab/sessions/$NAME
 python -m planelab peek ~/PlaneLab/sessions/$NAME          # -> ~/PlaneLab/sessions/$NAME/lab/peek.sqlite
+python -m planelab blend ~/PlaneLab/sessions/$NAME         # -> ~/PlaneLab/sessions/$NAME/lab/replay.blend
 ```
+
+Open `replay.blend` in Blender with the **Plane Lab** extension enabled. `PlaneLab/blender/` is added as a local extension repository; see `PlaneLab/README.md`. The file opens looking through the recorded camera, with the video behind it and the raw points on top.
 
 `"${APP[@]}"` passes the array as separate arguments in both zsh and bash. Spike outputs live under `Documents/Spikes/` and are pulled the same way.
 

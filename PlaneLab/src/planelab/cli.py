@@ -1,10 +1,12 @@
 """``python -m planelab`` (SPEC.md §5.5). Every command also has a Blender operator (L7); both call the same core.
 
-Commands so far: ``info`` and ``peek``. ``run``, ``synth`` and ``export`` arrive with their tasks (SPEC.md §18).
+Commands so far: ``info``, ``peek`` and ``blend``; ``run``, ``synth`` and ``export`` arrive with their tasks (SPEC §18).
 """
 
 import argparse
 import json
+import os
+import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -14,6 +16,9 @@ from planelab.info import describe, summarize
 from planelab.log import setup_logging
 from planelab.peek import table_counts, write_peek
 from planelab.session import SessionError, open_session
+
+DEFAULT_BLENDER = "/Applications/Blender.app/Contents/MacOS/Blender"
+REPLAY_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "replay_blend.py"
 
 
 def _info(args: argparse.Namespace) -> int:
@@ -35,6 +40,28 @@ def _peek(args: argparse.Namespace) -> int:
     return 0
 
 
+def _blend(args: argparse.Namespace) -> int:
+    blender = Path(args.blender or os.environ.get("BLENDER", DEFAULT_BLENDER))
+    if not blender.exists():
+        print(f"planelab: Blender not found at {blender} (set $BLENDER or pass --blender)", file=sys.stderr)
+        return 2
+    if not REPLAY_SCRIPT.exists():
+        print(f"planelab: {REPLAY_SCRIPT} is missing; `blend` runs from a repository checkout", file=sys.stderr)
+        return 2
+    with open_session(args.bundle) as session:
+        bundle = session.bundle
+    out = (args.out or bundle / "lab" / "replay.blend").expanduser().resolve()
+    command = [str(blender), "--background", "--factory-startup", "--python-exit-code", "1"]
+    command += ["--python", str(REPLAY_SCRIPT), "--", str(bundle), str(out)]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0 or not out.is_file():
+        print(f"planelab: Blender failed:\n{result.stdout[-2000:]}{result.stderr[-2000:]}", file=sys.stderr)
+        return 1
+    print(f"saved {out}")
+    print("Open it in Blender with the Plane Lab extension enabled; it opens looking through the recorded camera.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="planelab", description="Plane Lab: replay SidingsAR recordings.")
     parser.add_argument("--version", action="version", version=f"planelab {__version__}")
@@ -52,6 +79,14 @@ def build_parser() -> argparse.ArgumentParser:
     peek.add_argument("--out", type=Path, help="where to write it (default: <bundle>/lab/peek.sqlite)")
     peek.add_argument("--csv", type=Path, help="also write the frames table as CSV here")
     peek.set_defaults(handler=_peek)
+
+    blend = commands.add_parser(
+        "blend", help="save a ready-to-open Blender file of the recording to <bundle>/lab/replay.blend"
+    )
+    blend.add_argument("bundle", type=Path, help="a .planelab folder or its zip")
+    blend.add_argument("--out", type=Path, help="where to write it (default: <bundle>/lab/replay.blend)")
+    blend.add_argument("--blender", help=f"the Blender executable (default: $BLENDER or {DEFAULT_BLENDER})")
+    blend.set_defaults(handler=_blend)
     return parser
 
 

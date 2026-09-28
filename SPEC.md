@@ -314,6 +314,7 @@ python -m planelab run   <bundle> --config configs/recall.toml --name recall-01 
 python -m planelab synth <out.planelab> --scene facade --seed 7   # synthetic session, no video; scenes: facade, edges, room
 python -m planelab export <bundle> --run recall-01 --csv out.csv  # per-frame readouts
 python -m planelab peek  <bundle> [--csv frames.csv]          # readable copy: every BLOB decoded, every column explained
+python -m planelab blend <bundle>                             # ready-to-open <bundle>/lab/replay.blend (runs Blender headless)
 ```
 
 `--progress` prints one JSON line per step (`{"frame": 1200, "of": 7200}`). Blender's Recompute reads it (§6).
@@ -329,6 +330,7 @@ python -m planelab peek  <bundle> [--csv frames.csv]          # readable copy: e
 | `synth` | *File › New › Plane Lab Synthetic Session* (scene, seed) |
 | `export` | **Export CSV** in the panel |
 | `peek` | *(Should)* **Write readable copy** in the panel (P15) |
+| `blend` | Not needed inside Blender: it's the import itself, saved to a file (P16) |
 | — | *(Should)* a session browser for the sessions folder (set in the add-on preferences; default `~/PlaneLab/sessions/`) and a run picker |
 
 Operators are thin: each calls one core function, so the CLI and Blender can't drift apart.
@@ -666,6 +668,7 @@ Minor decisions made while planning, under the user's "minor decisions I trust y
 | P13 | ARKit → record conversions for the recorder live in one file, `SidingsAR/Recording/ARRecordAdapter.swift`. The SidingsAR rule "`PlaneAnchorAdapter` is the only place that converts ARKit types" becomes "`PlaneAnchorAdapter` (viewer) and `ARRecordAdapter` (recorder)". | Keeps the rule's intent: one place per consumer |
 | P14 | **Commits** (user, 2026-09-28): one commit per task once its checks are green, with the attribution trailer, without asking each time. Never push, never commit recordings. | User's choice |
 | P15 | **`planelab peek`** (user request, 2026-09-28: "a table on the sqlite file to peek the data, structured so I can catch all details"): it writes `<bundle>/lab/peek.sqlite` with every BLOB decoded into columns, enums as words, per-point and per-feature tables, and an `_about` table explaining every column (a test enforces that). It's a separate file because recordings are immutable (§3.2). | The user needs to see raw data before the Blender import exists |
+| P16 | **`planelab blend`** (2026-09-28, after the user asked for the Blender file of a new recording): it runs Blender headless with `scripts/replay_blend.py` and saves `<bundle>/lab/replay.blend`, the import in an empty scene that opens in camera view. Blender comes from `--blender`, then `$BLENDER`, then the default app path. It works from a repository checkout. | A new recording goes to Blender in one command |
 
 ### 17.5 Risks found while planning
 
@@ -721,7 +724,7 @@ A headless Blender script loads the T1 spike video as a movie clip. For at least
 - [x] One setting gives 0 mismatches. It's recorded in §15 R2 with the seek times.
 - [x] The median random seek is ≤ 100 ms, or the need for proxies is recorded.
 - [x] If no setting works, a fallback is chosen and logged: the recorder repeats the last image for skipped frames, or the importer maps frames through a lookup. *(Not needed: placing the clip at the first image works.)*
-- [ ] **User:** scrubbing the clip in Blender looks right.
+- [x] **User:** scrubbing the clip in Blender looks right. *(Covered on 2026-09-28 by scrubbing the real recording in Blender during the S11 check: "everything seems right".)*
 - **Verify:** `$BLENDER --background --factory-startup --python PlaneLab/spikes/r2_video_alignment.py -- <video> <manifest>`
 - **Result (2026-09-28):** the automated part is done. Blender drops a leading gap and keeps later ones; the fix is `clip.frame_start = 1 + first image` (0 of 72 frames wrong on both the camera-background and the sequencer paths). Decoding is about 50 ms per random frame, with no proxies. Details are in §15 R2 and `PlaneLab/spikes/README.md`. The scrub file for the user check is `~/PlaneLab/spikes/r2/r2_scrub.blend`.
 - **Depends on:** T1.
@@ -863,16 +866,16 @@ The extension layout from P6: manifest, the `vendor/planelab` link, `scripts/bui
 The recording's `video.mov` becomes the camera's background movie clip, starting at timeline frame `1 + <first log frame with has_image = 1>` (T2). It's sized to the captured image. Later `has_image = 0` gaps need nothing: Blender holds the previous image.
 
 - [x] Headless: on the fixture video, frame `idx + 1` shows image `idx` (P4 blocks). *(2026-09-28: frames 1–10 show `[0, 1, 2, 3, 3, 5, 6, 6, 8, 9]`: black before the first image, every image on `idx + 1`, and gaps at idx 4 and 7 holding the previous image. The smoke test renders the camera's own clip through the compositor's Movie Clip node, which maps scene frames to clip frames the same way the camera background does. On the real recording, the clip starts at frame 1 and spans all 2,863 frames.)*
-- [ ] **User (S11):** on the T7 recording, looking through the camera, the raw points sit on image features across the whole timeline.
+- [x] **User (S11):** on the T7 recording, looking through the camera, the raw points sit on image features across the whole timeline. *(2026-09-28, user: "everything seems right". The screenshot shows the points on the basket holes, the door panels and the machine's edges.)*
 - **Verify:** the smoke test, then the user's check in Blender.
 - **Depends on:** T2, T7, T8.
 - **Files:** `PlaneLab/blender/planelab_blender/{import_op,camera}.py`, `PlaneLab/tests/blender/smoke_import.py`
 
 #### Checkpoint 1: tracer bullet
 
-- [ ] `swift test`, the compile check, `pytest` (≥ 85 %) and `ruff` are green.
-- [ ] **User:** S11 holds on a real iPhone 13 recording, so video, pose, intrinsics and axes agree.
-- [ ] **User:** review before the two tracks.
+- [x] `swift test`, the compile check, `pytest` (≥ 85 %) and `ruff` are green.
+- [x] **User:** S11 holds on a real iPhone 13 recording, so video, pose, intrinsics and axes agree.
+- [x] **User:** review before the two tracks. *(2026-09-28. The user also linked `PlaneLab/blender/` into their Blender as a local extension repository and imported a second, landscape recording, `20260928-174840`: 978 frames at 60 Hz, roll about 2°, images missing only at frames 5–9 and 639.)*
 
 ### Phase 2A: Recorder complete (Swift, device)
 

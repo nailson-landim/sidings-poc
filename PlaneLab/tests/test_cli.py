@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import sqlite3
 import subprocess
 import sys
@@ -95,3 +96,27 @@ def test_unwritable_log_directory_is_not_fatal(tmp_path: Path, monkeypatch: pyte
         assert logger.handlers == []
     finally:
         logger.handlers[:] = saved
+
+
+BLENDER = Path(os.environ.get("BLENDER", "/Applications/Blender.app/Contents/MacOS/Blender"))
+
+
+@pytest.mark.skipif(not BLENDER.exists(), reason="Blender not installed")
+def test_blend_saves_a_replay_file(bundle_copy: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["blend", str(bundle_copy)]) == 0
+    out = bundle_copy.resolve() / "lab" / "replay.blend"
+    assert out.is_file() and out.stat().st_size > 0
+    assert f"saved {out}" in capsys.readouterr().out
+
+
+def test_blend_without_blender(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["blend", str(FIXTURE_BUNDLE), "--blender", str(tmp_path / "no-blender")]) == 2
+    assert "Blender not found" in capsys.readouterr().err
+
+
+def test_blend_reports_a_failing_blender(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fake = tmp_path / "fake-blender"
+    fake.write_text("#!/bin/sh\necho boom >&2\nexit 3\n")
+    fake.chmod(0o755)
+    assert main(["blend", str(FIXTURE_BUNDLE), "--blender", str(fake), "--out", str(tmp_path / "x.blend")]) == 1
+    assert "boom" in capsys.readouterr().err

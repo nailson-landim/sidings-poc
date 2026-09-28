@@ -23,7 +23,8 @@ Paste this into a new session:
 | T6 Python package, reader, `planelab info` | Done | `08f55cb` |
 | T7 Record/Stop in SidingsAR | Done. The user's recording `20260928-160746`: 2,863 frames at 60 Hz, 0 dropped, 0.24 % without an image | `e90e034` + docs commit |
 | T8 Blender extension and import (camera, trail, raw points) | Done (headless). The Reload Scripts dev loop waits for the user's OK to add a local repository | this commit |
-| T9 Video behind the camera | Automated check done. **User S11 check open:** install the extension in their Blender, import the recording, and look through the camera | this commit |
+| T9 Video behind the camera | Done, S11 confirmed by the user | `f788539` |
+| Checkpoint 1 | **Passed** (user, 2026-09-28): S11 holds, points sit on the video. The user linked `PlaneLab/blender/` as a local extension repository | — |
 | T10–T26 | Not started | — |
 
 The checks were green at `e90e034`:
