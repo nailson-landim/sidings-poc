@@ -36,6 +36,7 @@ def build_session(scene: bpy.types.Scene, bundle: Path, replay: Replay, events: 
 
     configure_scene(scene, replay)
     camera = add_camera(collection, name, replay)
+    add_video(camera, bundle, replay)
     add_trail(collection, name, replay)
     add_raw_points(collection, name, bundle)
     add_markers(scene, events)
@@ -86,6 +87,28 @@ def add_camera(collection: bpy.types.Collection, name: str, replay: Replay) -> b
         },
     )
     return camera
+
+
+def add_video(camera: bpy.types.Object, bundle: Path, replay: Replay) -> bpy.types.MovieClip | None:
+    """The recording's video as the camera's background (SPEC.md §6, §15 R2).
+
+    Blender drops the empty edit a leading gap leaves in the file, so the clip's first image lands on its first frame.
+    Starting the clip at ``1 + first image idx`` puts every image on frame ``idx + 1``; later gaps are kept by Blender,
+    which holds the previous image through them.
+    """
+    video = bundle / "video.mov"
+    if not video.is_file() or replay.first_image is None:
+        return None
+    clip = bpy.data.movieclips.load(str(video))
+    clip.frame_start = 1 + replay.first_image
+    camera.data.show_background_images = True
+    background = camera.data.background_images.new()
+    background.source = "MOVIE_CLIP"
+    background.clip = clip
+    background.alpha = 1.0
+    background.display_depth = "BACK"
+    background.frame_method = "FIT"
+    return clip
 
 
 def keyframe(
@@ -182,6 +205,10 @@ def remove_collection(name: str) -> None:
         return
     for obj in list(collection.objects):
         data = obj.data
+        if isinstance(data, bpy.types.Camera):
+            for background in list(data.background_images):
+                if background.clip is not None and background.clip.users <= 1:
+                    bpy.data.movieclips.remove(background.clip)
         for owner in (obj, data):
             if owner is not None and owner.animation_data and owner.animation_data.action:
                 bpy.data.actions.remove(owner.animation_data.action)

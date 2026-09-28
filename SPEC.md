@@ -862,7 +862,7 @@ The extension layout from P6: manifest, the `vendor/planelab` link, `scripts/bui
 
 The recording's `video.mov` becomes the camera's background movie clip, starting at timeline frame `1 + <first log frame with has_image = 1>` (T2). It's sized to the captured image. Later `has_image = 0` gaps need nothing: Blender holds the previous image.
 
-- [ ] Headless: on the fixture video, frame `idx + 1` shows image `idx` (P4 blocks).
+- [x] Headless: on the fixture video, frame `idx + 1` shows image `idx` (P4 blocks). *(2026-09-28: frames 1–10 show `[0, 1, 2, 3, 3, 5, 6, 6, 8, 9]`: black before the first image, every image on `idx + 1`, and gaps at idx 4 and 7 holding the previous image. The smoke test renders the camera's own clip through the compositor's Movie Clip node, which maps scene frames to clip frames the same way the camera background does. On the real recording, the clip starts at frame 1 and spans all 2,863 frames.)*
 - [ ] **User (S11):** on the T7 recording, looking through the camera, the raw points sit on image features across the whole timeline.
 - **Verify:** the smoke test, then the user's check in Blender.
 - **Depends on:** T2, T7, T8.

@@ -23,7 +23,8 @@ Paste this into a new session:
 | T6 Python package, reader, `planelab info` | Done | `08f55cb` |
 | T7 Record/Stop in SidingsAR | Done. The user's recording `20260928-160746`: 2,863 frames at 60 Hz, 0 dropped, 0.24 % without an image | `e90e034` + docs commit |
 | T8 Blender extension and import (camera, trail, raw points) | Done (headless). The Reload Scripts dev loop waits for the user's OK to add a local repository | this commit |
-| T9–T26 | Not started | — |
+| T9 Video behind the camera | Automated check done. **User S11 check open:** install the extension in their Blender, import the recording, and look through the camera | this commit |
+| T10–T26 | Not started | — |
 
 The checks were green at `e90e034`:
 - `swift test`: 68 tests in 10 suites.
@@ -44,7 +45,7 @@ In order:
    - Set up the local-repository dev loop.
    - Import: the scene fps is the **delivered** rate, `session.delivered_fps()`, not `video_fps` (§3.4). Convert ARKit to Blender axes as `(x, −z, y)`. Set lens, shift and resolution from the intrinsics. The raw-points layer comes from a frame-change handler. `event` rows become markers.
    - Headless smoke test on `session-format/fixtures/v1/tiny.planelab`.
-2. **T9: video behind the camera.** The clip starts at timeline frame `1 + session.first_image_idx()`. Blender drops a leading gap and keeps later ones (§15 R2). The user then checks S11 on the T7 recording (`~/PlaneLab/sessions/20260928-160746.planelab`): the points sit on the image.
+2. ~~**T9: video behind the camera.**~~ Code and automated check done; The clip starts at timeline frame `1 + session.first_image_idx()`. Blender drops a leading gap and keeps later ones (§15 R2). The user then checks S11 on the T7 recording (`~/PlaneLab/sessions/20260928-160746.planelab`): the points sit on the image.
 3. **Checkpoint 1:** the user reviews. Then comes Phase 2, with two parallel tracks:
    - **2A**, recorder, T10–T13: stop reasons and events, ARKit anchors, permissions and location, the Sessions sheet.
    - **2B**, lab core, T14–T20: synth, config, gate and accumulator, RANSAC, search, tracker, pipeline.

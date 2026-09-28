@@ -26,6 +26,70 @@ def check(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def read_number(pixels: np.ndarray) -> int:
+    """The frame number drawn as a 4 x 4 grid of blocks (SPEC.md §17.4 P4); pixels are H x W x 4, top row first."""
+    height, width = pixels.shape[:2]
+    number = 0
+    for bit in range(16):
+        x = (bit % 4 * 2 + 1) * width // 8
+        y = (bit // 4 * 2 + 1) * height // 8
+        if pixels[y, x, 0] > 0.5:
+            number |= 1 << bit
+    return number
+
+
+def shown_number(scene: bpy.types.Scene, clip: bpy.types.MovieClip, frame: int, out: Path) -> int:
+    """Renders what the camera's clip shows at ``frame``, through the compositor's Movie Clip node, which maps scene
+    frames to clip frames the same way the camera background does.
+    """
+    tree = bpy.data.node_groups.get("smoke clip") or bpy.data.node_groups.new("smoke clip", "CompositorNodeTree")
+    if not tree.nodes:
+        tree.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
+        source = tree.nodes.new("CompositorNodeMovieClip")
+        output = tree.nodes.new("NodeGroupOutput")
+        tree.links.new(source.outputs["Image"], output.inputs[0])
+    next(n for n in tree.nodes if n.bl_idname == "CompositorNodeMovieClip").clip = clip
+    scene.compositing_node_group = tree
+    scene.render.use_compositing = True
+    scene.render.use_sequencer = False
+    scene.render.engine = "BLENDER_WORKBENCH"
+    scene.view_settings.view_transform = "Standard"
+    scene.render.image_settings.file_format = "PNG"
+    scene.frame_set(frame)
+    scene.render.filepath = str(out)
+    bpy.ops.render.render(write_still=True)
+    image = bpy.data.images.load(str(out))
+    width, height = image.size
+    pixels = np.array(image.pixels[:], dtype=np.float32).reshape(height, width, 4)[::-1]
+    bpy.data.images.remove(image)
+    return read_number(pixels)
+
+
+def check_video(scene: bpy.types.Scene, camera: bpy.types.Object, replay: object, bundle: Path) -> None:
+    """T9: the video is the camera's background, starting at the first image (SPEC.md §15 R2)."""
+    backgrounds = list(camera.data.background_images)
+    check(camera.data.show_background_images and len(backgrounds) == 1, "one background image")
+    clip = backgrounds[0].clip
+    check(clip is not None and Path(bpy.path.abspath(clip.filepath)) == bundle / "video.mov", "clip is the video")
+    check(clip.frame_start == 1 + replay.first_image, f"clip starts at {clip.frame_start}")
+    # The clip spans first to last image; inner gaps count as frames (Blender holds the previous image through them).
+    last_image = int(replay.idx[replay.has_image][-1])
+    span = last_image - replay.first_image + 1
+    check(clip.frame_duration == span, f"clip spans {clip.frame_duration} frames, expected {span}")
+
+    if "fixture" not in bundle.parts[-3:-1] and bundle.name != "tiny.planelab":
+        return  # only the fixture's video carries frame numbers
+    out = Path(bpy.app.tempdir) / "smoke_frame.png"
+    shown = []
+    for idx in replay.idx.tolist():
+        latest = [i for i in replay.idx[: idx + 1].tolist() if replay.has_image[i]]
+        expected = latest[-1] if latest else 0  # before the first image the clip shows nothing (black = 0)
+        number = shown_number(scene, clip, idx + 1, out)
+        shown.append(number)
+        check(number == expected, f"frame {idx + 1} shows image {number}, expected {expected}")
+    print(f"VIDEO OK {shown}")
+
+
 def main(bundle: Path) -> None:
     planelab_blender.register()
     with open_session(bundle) as session:
@@ -63,6 +127,7 @@ def main(bundle: Path) -> None:
         check(np.allclose(vertices, expected_points, atol=1e-5), f"point positions at idx {idx}")
 
     check(len(trail.data.vertices) == len(replay) and len(trail.data.edges) == len(replay) - 1, "trail")
+    check_video(scene, camera, replay, bundle)
     markers = sorted((m.frame, m.name) for m in scene.timeline_markers)
     check(markers == sorted((e.frame_idx + 1, f"PL {e.kind} {e.detail}") for e in events), f"markers {markers}")
 
