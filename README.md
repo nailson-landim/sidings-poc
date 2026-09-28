@@ -55,6 +55,18 @@ Requirements, usage and architecture are in [`ARKit_WallDetection/README.md`](AR
 
 ## Recordings: phone → Mac
 
+**One command** for the iPhone 13 ("Tricorder"): pull the newest recording, summarize it, write `peek.sqlite` and `replay.blend`, and open it in Blender. It takes a few seconds.
+
+```bash
+PlaneLab/scripts/pull.sh               # newest recording on the phone
+PlaneLab/scripts/pull.sh --list        # what's on the phone, and what's already on the Mac
+PlaneLab/scripts/pull.sh <name>        # a given one, e.g. 20260928-174840
+PlaneLab/scripts/pull.sh --all         # everything not yet on the Mac
+                                       # add --no-open to skip Blender, --force to copy again
+```
+
+The phone's identifier, the app and the folders are set at the top of the script. `PLANELAB_DEVICE` and `PLANELAB_SESSIONS` override them. The manual steps it wraps are below.
+
 SidingsAR's **Record** saves sessions to `Documents/Sessions/<yyyyMMdd-HHmmss>.planelab/` on the phone. Finder's Files tab lists the app, but it can't open or copy its folders, so pull them with `devicectl`. It only reads the app's container, over the cable or the network, and installs nothing. Keep sessions on the Mac under `~/PlaneLab/sessions/`, which is outside git (they hold video of houses and GPS positions).
 
 ```bash

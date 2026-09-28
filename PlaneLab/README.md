@@ -118,7 +118,7 @@ PlaneLab/
 │   ├── cli.py        python -m planelab
 │   └── log.py        silent rotating log file, plus stderr for the CLI
 ├── blender/planelab_blender/  the extension: manifest, import operator, scene build, frame handler; vendor/planelab → src/planelab
-├── scripts/build_extension.sh the zip, with the core copied in
+├── scripts/          build_extension.sh (the zip), replay_blend.py (behind `blend`), pull.sh (phone → Mac → Blender, see the root README)
 ├── spikes/           R2 Blender video spike (see spikes/README.md)
 └── tests/            pytest: the contract (same fixture as Swift), reader, peek, axes, replay, CLI; test_blender.py drives headless Blender
 ```

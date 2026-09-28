@@ -92,7 +92,8 @@ cd PlaneLab && source .venv/bin/activate
 ruff check . && ruff format --check . && pytest --cov=planelab --cov-fail-under=85
 python -m planelab info <bundle>
 
-# Pull sessions from the phone: see the root README, "Recordings: phone → Mac"
+# Pull the newest recording from the iPhone 13 and open it in Blender (info, peek and blend included): PlaneLab/scripts/pull.sh
+# (--list, <name>, --all, --no-open, --force; the manual devicectl steps are in the root README, "Recordings: phone → Mac")
 # See everything in one: python -m planelab peek <bundle>  -> <bundle>/lab/peek.sqlite (decoded; _about explains columns)
 # (iPhone 13 UDID 782F0FCC-0A00-5F6F-82AE-AC575194E5CA; a 13 Pro is also paired: `xcrun devicectl list devices`)
 
