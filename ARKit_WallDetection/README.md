@@ -30,7 +30,7 @@ SidingsAR detects wall and floor planes and draws each one from its real outline
 | | |
 |---|---|
 | Xcode | 26.x (the project uses Xcode 16+ synchronized folders) |
-| Deployment target | iOS 18.0, iPhone only, portrait |
+| Deployment target | iOS 18.0, iPhone only, **locked to Landscape Right** (hold the phone with the charging port on the right). UI orientation doesn't change the recording: ARKit's camera pose and `capturedImage` are always in the sensor's landscape orientation. |
 | Language | Swift 6, default actor isolation `MainActor` |
 | Device | A physical iPhone with ARKit world tracking. **The Simulator can't run ARKit.** |
 | Plane classification | A12 Bionic or newer (`ARPlaneAnchor.isClassificationSupported`). Older devices fall back to "none". |
@@ -105,6 +105,7 @@ The gap between the origin and the center shows that ARKit anchors a plane where
 | **tracking** | `normal` / `limited` / `n/a` (details appear in the top banner) |
 | **LiDAR** | Whether this device supports scene reconstruction |
 
+- **Control row** (one row, for the landscape layout): the detection picker, Debug, Record/Stop and Reset.
 - **Detection picker:** `Vertical` / `Horizontal` / `Both`. Changing it resets the session.
 - **Debug menu (ladybug):**
   - Feature points (on by default)

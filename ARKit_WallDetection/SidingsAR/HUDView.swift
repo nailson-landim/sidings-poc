@@ -18,11 +18,12 @@ struct HUDView: View {
                 stat("tracking", controller.trackingName)
                 stat("LiDAR", controller.isLiDARDevice ? "yes" : "no")
             }
-            Picker("Detection", selection: $controller.mode) {
-                ForEach(DetectionMode.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
+            // One control row: the app is locked to Landscape Right, where height is scarce.
             HStack {
+                Picker("Detection", selection: $controller.mode) {
+                    ForEach(DetectionMode.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
                 Menu {
                     Toggle("Feature points", isOn: $controller.showFeaturePoints)
                     Toggle("Anchor markers", isOn: $controller.showMarkers)
@@ -30,7 +31,6 @@ struct HUDView: View {
                     Toggle("Render statistics", isOn: $controller.showStatistics)
                 } label: {
                     Label("Debug", systemImage: "ladybug")
-                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
                 recordButton
