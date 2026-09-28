@@ -21,3 +21,6 @@ __pycache__/
 htmlcov/
 *.egg-info/
 dist/
+
+# Blender extension-repository index, created when PlaneLab/blender/ is a local repository
+PlaneLab/blender/.blender_ext/

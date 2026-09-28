@@ -78,7 +78,14 @@ Importing the same recording again replaces it. The user's 48 s recording (2,863
 ./scripts/build_extension.sh                 # -> dist/planelab_blender-<version>.zip, with the core copied in
 ```
 
-Install that zip with **Blender › Settings › Get Extensions › ⌄ › Install from Disk**. For development, a local repository pointing at `PlaneLab/blender/` loads the source directly, so *Reload Scripts* picks up edits. In the repository, `vendor/planelab` is a symlink to `src/planelab`, and the build script copies the real files into the zip (SPEC §17.4 P6).
+Install that zip with **Blender › Settings › Get Extensions › ⌄ › Install from Disk**.
+
+`scripts/replay_blend.py` saves a ready-to-open `<bundle>/lab/replay.blend` of a recording (the import in an empty scene, opening in camera view):
+
+```bash
+/Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup \
+  --python scripts/replay_blend.py -- ~/PlaneLab/sessions/<name>.planelab
+``` For development, a local repository pointing at `PlaneLab/blender/` loads the source directly, so *Reload Scripts* picks up edits. In the repository, `vendor/planelab` is a symlink to `src/planelab`, and the build script copies the real files into the zip (SPEC §17.4 P6).
 
 `tests/test_blender.py` runs the real Blender headless. It imports the contract fixture and checks the camera pose, lens and points against the core's own conversion. It also builds the zip and installs it into a throwaway Blender profile. It's skipped when Blender isn't installed.
 

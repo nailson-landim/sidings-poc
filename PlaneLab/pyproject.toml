@@ -30,6 +30,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "N", "ANN", "RUF", "PTH", "T20"]
 # print is for CLI entry points and scripts run inside Blender; tests may assert freely.
 "src/planelab/cli.py" = ["T20"]
 "spikes/*" = ["T20"]
+"scripts/*" = ["T20"]
 "tests/*" = ["ANN201", "ANN001"]
 # Blender naming (PLANELAB_OT_*) and the vendor sys.path insert before imports.
 "blender/*" = ["N801", "RUF012"]
