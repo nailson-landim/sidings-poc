@@ -101,6 +101,7 @@ The gap between the origin and the center shows that ARKit anchors a plane where
 | **planes** `kept/raw` | Planes shown after suppression / live ARKit plane anchors |
 | **points** | ARKit raw feature points in the current frame |
 | **mem MB** | Process physical footprint, refreshed at 1 Hz. The same number as Xcode's memory gauge and the jetsam limit. |
+| **fps** | Frames ARKit delivered in the last second. It was about 30 on an iPhone 13 during the first R1 spike, not 60. |
 | **tracking** | `normal` / `limited` / `n/a` (details appear in the top banner) |
 | **LiDAR** | Whether this device supports scene reconstruction |
 
@@ -110,7 +111,7 @@ The gap between the origin and the center shows that ARKit anchors a plane where
   - Anchor markers
   - Hide duplicates
   - RealityKit render statistics
-  - **Rec video (R1 spike)**: temporary, for Plane Lab task T3 (`../SPEC.md` §18). It copies every camera image into a 4-buffer pool and encodes HEVC at 60 fps while the viewer runs. A red row shows seconds, images written and dropped, copy time p95 and thermal state (0–3). Output goes to `Documents/Spikes/r1-<stamp>.mov`, plus a `.json` with the numbers, and it's visible in Finder and the Files app. Reset, pause, an interruption or a session error stop it. T7 replaces it with the real Record button.
+  - **Rec video (R1 spike)**: temporary, for Plane Lab task T3 (`../SPEC.md` §18). It copies every camera image into a 4-buffer pool and encodes HEVC while the viewer runs. A red row shows seconds, fps, images dropped, copy time p95 and thermal state (0–3). Output goes to `Documents/Spikes/r1-<stamp>.mov` plus a `.json` with ARKit's declared video format, the totals and a once-per-second timeline of fps, memory and thermal state. The files are visible in Finder and the Files app, or can be pulled with `devicectl` (see `CLAUDE.md`). Reset, pause, an interruption or a session error stop it. T7 replaces it with the real Record button.
 - **Reset:** clears all anchors and tracker state, and restarts tracking.
 
 ### Banners and overlays
@@ -217,6 +218,7 @@ What each rule replaced (v2.0 → v2.1):
 ```
 ARKit_WallDetection/
 ├── SidingsAR.xcodeproj          Xcode project; SidingsAR/ is a synchronized folder, and PlaneKit is a local package
+├── SidingsAR-Info.plist         Info.plist keys Xcode can't generate (UIFileSharingEnabled); merged into the generated one
 ├── SidingsAR/                   App target
 │   ├── SidingsARApp.swift       @main; owns ARSessionController
 │   ├── ContentView.swift        ARView container, label layer, coaching overlay, banner, alert

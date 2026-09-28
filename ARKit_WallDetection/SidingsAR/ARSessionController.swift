@@ -36,6 +36,8 @@ final class ARSessionController: NSObject {
     private(set) var keptCount = 0
     private(set) var featurePointCount = 0
     private(set) var memoryMB: Double = 0
+    /// Frames ARKit delivered in the last second of frame time.
+    private(set) var fps: Double = 0
     private(set) var trackingName = "n/a"
     private(set) var banner: String?
     var errorMessage: String?
@@ -61,6 +63,7 @@ final class ARSessionController: NSObject {
     @ObservationIgnored private var sceneUpdate: (any Cancellable)?
     /// Last `ARFrame.timestamp`; the single clock for throttles and rebuild gates.
     @ObservationIgnored private var lastFrameTime: TimeInterval = 0
+    @ObservationIgnored private var fpsWindow: (start: TimeInterval, frames: Int) = (0, 0)
     @ObservationIgnored private var interruptionBanner: String?
     @ObservationIgnored private let logger = Logger(subsystem: "br.com.neuralnexgen.sidingsar", category: "session")
 
@@ -99,7 +102,7 @@ final class ARSessionController: NSObject {
 
     func setVideoSpike(_ on: Bool) {
         if on {
-            video.start(memoryMB: memoryMB)
+            video.start(memoryMB: memoryMB, format: arView.session.configuration?.videoFormat)
         } else {
             video.stop(memoryMB: memoryMB)
         }
@@ -219,7 +222,12 @@ extension ARSessionController: @preconcurrency ARSessionDelegate {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         let now = frame.timestamp
         lastFrameTime = now
-        video.capture(frame)
+        fpsWindow.frames += 1
+        if now - fpsWindow.start >= 1 {
+            fps = Double(fpsWindow.frames) / (now - fpsWindow.start)
+            fpsWindow = (now, 0)
+        }
+        video.capture(frame, memoryMB: memoryMB)
         if (needsResolve || !dirty.isEmpty) && resolveThrottle.fire(now: now) {
             resolveAndRender(now: now)
         }

@@ -12,6 +12,7 @@ struct HUDView: View {
                 stat("planes", "\(controller.keptCount)/\(controller.rawCount)")
                 stat("points", "\(controller.featurePointCount)")
                 stat("mem MB", String(format: "%.0f", controller.memoryMB))
+                stat("fps", String(format: "%.0f", controller.fps))
                 stat("tracking", controller.trackingName)
                 stat("LiDAR", controller.isLiDARDevice ? "yes" : "no")
             }
@@ -50,7 +51,7 @@ struct HUDView: View {
         let video = controller.video
         return HStack {
             stat("REC s", String(format: "%.0f", video.elapsed))
-            stat("written", "\(video.written)")
+            stat("fps", String(format: "%.0f", video.fps))
             stat("dropped", "\(video.dropped)")
             stat("copy p95", String(format: "%.1f ms", video.copyP95Ms))
             stat("thermal", "\(video.thermal.rawValue)")
@@ -61,6 +62,8 @@ struct HUDView: View {
     private func stat(_ title: String, _ value: String) -> some View {
         VStack(spacing: 0) {
             Text(value).font(.callout.monospacedDigit().weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             Text(title).font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)

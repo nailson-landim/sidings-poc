@@ -12,6 +12,13 @@ xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR \
 
 - ARKit **doesn't run in the Simulator**. Visual behavior can only be verified by the user on a device, so say so and never claim device results you didn't get.
 - `xcrun devicectl list devices` shows connected iPhones. Ask before installing or launching anything on a device; the connected phones may not be the user's.
+- Pulling files the app wrote needs no install. It reads the app container, like Xcode's *Download Container*:
+  ```bash
+  xcrun devicectl device info files --device <id> --domain-type appDataContainer \
+    --domain-identifier br.com.neuralnexgen.sidingsar --subdirectory Documents
+  xcrun devicectl device copy from --device <id> --domain-type appDataContainer \
+    --domain-identifier br.com.neuralnexgen.sidingsar --source Documents/<path> --destination <local path>
+  ```
 
 ## Where code goes
 
@@ -41,6 +48,7 @@ xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR \
 
 - Default actor isolation is `MainActor` (`SWIFT_DEFAULT_ACTOR_ISOLATION`). `ARSessionDelegate` is adopted as `@preconcurrency`, and the delegate queue is main.
 - The project uses a **synchronized folder** group (`PBXFileSystemSynchronizedRootGroup`). New files in `SidingsAR/` are picked up automatically, so don't hand-edit `project.pbxproj` to add files. Xcode may rewrite quoting in the file; that's harmless.
+- Info.plist is generated from `INFOPLIST_KEY_*` build settings **plus** `SidingsAR-Info.plist`, which sits outside the synchronized folder so it isn't copied as a resource. Some keys have no generator setting and are silently dropped; `UIFileSharingEnabled` is one of them. Put those in `SidingsAR-Info.plist`, and check the built app with `plutil -p <app>/Info.plist`.
 - Swift Testing: `#expect(x.mutatingCall())` doesn't compile. Bind to a `let` first.
 - Floating-point boundaries: `10.1 - 10.0 < 0.1`. Don't put test timestamps exactly on a throttle boundary.
 - Video tests: `AVAssetReaderTrackOutput` reports **media** time and ignores the empty edit that `AVAssetWriter` writes for a leading gap. Map timestamps through `track.segments` (`VideoProbe.movieTime`) before comparing them with frame indices.

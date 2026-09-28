@@ -145,6 +145,7 @@ An export to other formats can come later.
 | `lidar` | `0` / `1` |
 | `plane_detection`, `world_alignment` | `both`, `gravity` |
 | `video_width`, `video_height`, `video_fps`, `video_codec`, `video_bitrate` | `1920`, `1440`, `60`, `hevc`, `8000000` |
+| `arkit_format_fps`, `arkit_format_resolution` | `60`, `1920x1440`: the running configuration's `videoFormat`, as promised. The `frame.t` column shows what was delivered. T3 run 1 delivered about 30 Hz, and whether `video_fps` should follow the format or the delivered rate is decided after T3 run 2. |
 | `started_at`, `stopped_at` | ISO 8601 UTC |
 | `stop_reason` | `user` / `interruption` / `reset` / `mode_change` / `low_disk` / `error` |
 | `frames_logged`, `frames_with_image`, `frames_dropped` | counters written when the recording is finalized |
@@ -232,7 +233,7 @@ Any change to the tables or conventions bumps `schema_version`. Readers refuse v
 | R5 | **Write path.** SQLite runs on its own serial queue in WAL mode, with one transaction about every 0.5 s. The queue is bounded. If it ever fills, whole frames are dropped and counted. The delegate is never blocked. |
 | R6 | **Stop:** finish the video, commit, write the final `meta` rows, close. |
 | R7 | **Sessions sheet:** a list of recordings (date, duration, size, device), with **Share** (zipped with `NSFileCoordinator`'s `.forUploading`, so no dependency) and **Delete**. |
-| R8 | Sessions live in `Documents/Sessions/` and are visible in the Files app and in Finder's device view (`UIFileSharingEnabled`, `LSSupportsOpeningDocumentsInPlace`). |
+| R8 | Sessions live in `Documents/Sessions/` and are visible in the Files app and in Finder's device view (`UIFileSharingEnabled`, `LSSupportsOpeningDocumentsInPlace`). `UIFileSharingEnabled` has to come from `SidingsAR-Info.plist`, because Xcode's generated Info.plist ignores its build-setting key (T3). |
 | R9 | Recording stops by itself when free space drops below 1 GB (`stop_reason = low_disk`). |
 | R10 | **Memory stays flat** while recording, because every buffer and queue is bounded. It's checked with the existing *mem MB* readout. |
 | R11 | *(Should)* A **Mark** button adds an `event` row. Use it to note things like "wall A starts here". |
@@ -730,6 +731,16 @@ Minimal glue behind a temporary HUD toggle, *Rec video*. Inside the frame delega
 - [ ] **Device:** 5 minutes on the iPhone 13 at the default format. `r1-summary.json` gives the dropped %, copy p95 and highest thermal state. The user reports whether the plane viewer stutters, and *mem MB* at the start and end.
 - [ ] The decision is logged in §15 R1: keep 60 fps images, or take the P5 fallback. `RecorderConstants` is updated to match.
 - **Verify:** compile check; the device run (ask before installing).
+- **Run 1 (2026-09-28, iPhone 13, 96 s, phone charging, installed by the user from Xcode):**
+  - **Copy on the main thread is cheap:** p50 0.62 ms, p95 0.85 ms, max 2.8 ms. The §17.5 risk is retired.
+  - **Drops:** 4 of 2,876 images (0.14 %), all pool drops in one burst, none from the encoder.
+  - **No stutter** (user). *mem MB* went 303 → 430 at the ends; the user saw about 350 during the run.
+  - **Thermal reached `serious`.**
+  - **Open:** ARKit delivered **≈ 30 Hz, not 60** (2,876 frames in 96 s). So the movie, timed at `idx / 60`, lasts 47.9 s for 96 s of walking. Either the format is 30 fps or the rate fell with heat.
+- **Tooling fixes found by run 1:**
+  - Xcode's generated Info.plist ignores `INFOPLIST_KEY_UIFileSharingEnabled`, so the app didn't show in Finder. It now comes from `SidingsAR-Info.plist`.
+  - Files can always be pulled with `xcrun devicectl device copy from … --domain-type appDataContainer` (see `ARKit_WallDetection/CLAUDE.md`).
+- **Run 2 needs:** 5 minutes, not charging, starting cool. The `.json` now records ARKit's declared video format and a once-per-second timeline of delivered fps, memory and thermal state. The main HUD row shows fps before and during Rec.
 - **Depends on:** T1.
 - **Files:** `SidingsAR/Recording/VideoCapture.swift`, `SidingsAR/HUDView.swift`, `SidingsAR/ARSessionController.swift`, `SidingsAR.xcodeproj/project.pbxproj` (Info keys only)
 

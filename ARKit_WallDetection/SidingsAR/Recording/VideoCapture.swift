@@ -15,6 +15,8 @@ import PlaneKit
 final class VideoCapture {
     private(set) var isRecording = false
     private(set) var elapsed: TimeInterval = 0
+    /// Frames delivered by ARKit per second over the last second.
+    private(set) var fps: Double = 0
     private(set) var written = 0
     private(set) var dropped = 0
     private(set) var copyP95Ms: Double = 0
@@ -29,15 +31,22 @@ final class VideoCapture {
     @ObservationIgnored private var maxThermal = ProcessInfo.ThermalState.nominal
     @ObservationIgnored private var startMemoryMB: Double = 0
     @ObservationIgnored private var statsThrottle = Throttle(interval: 0.5)
+    @ObservationIgnored private var sampleThrottle = Throttle(interval: 1.0)
+    @ObservationIgnored private var window: (time: TimeInterval, frames: Int)?
+    @ObservationIgnored private var timeline: [SpikeSample] = []
+    @ObservationIgnored private var formatFPS = 0
+    @ObservationIgnored private var formatResolution = ""
     @ObservationIgnored private let logger = Logger(subsystem: "br.com.neuralnexgen.sidingsar", category: "spike-r1")
 
-    func start(memoryMB: Double) {
+    /// `format` is the running configuration's video format: what ARKit promised, to compare with what it delivers.
+    func start(memoryMB: Double, format: ARConfiguration.VideoFormat?) {
         guard !isRecording else { return }
         isRecording = true
         stamp = Self.stampFormatter.string(from: .now)
         frameIndex = 0
         firstTime = nil
         elapsed = 0
+        fps = 0
         written = 0
         dropped = 0
         copyMs.removeAll(keepingCapacity: true)
@@ -45,17 +54,23 @@ final class VideoCapture {
         maxThermal = ProcessInfo.processInfo.thermalState
         startMemoryMB = memoryMB
         statsThrottle.reset()
-        logger.info("R1 spike started")
+        sampleThrottle.reset()
+        window = nil
+        timeline.removeAll()
+        formatFPS = format?.framesPerSecond ?? 0
+        formatResolution = format.map { "\(Int($0.imageResolution.width))x\(Int($0.imageResolution.height))" } ?? "unknown"
+        logger.info("R1 spike started; ARKit format \(self.formatResolution, privacy: .public) @ \(self.formatFPS) fps")
     }
 
     /// Called from `session(_:didUpdate:)` for every frame. Never blocks and never keeps `frame`.
-    func capture(_ frame: ARFrame) {
+    func capture(_ frame: ARFrame, memoryMB: Double) {
         guard isRecording else { return }
         let index = frameIndex
         frameIndex += 1
         let time = frame.timestamp
         firstTime = firstTime ?? time
         elapsed = time - (firstTime ?? time)
+        sample(time: time, memoryMB: memoryMB)
         let image = frame.capturedImage
 
         if spike == nil, !openWriter(width: CVPixelBufferGetWidth(image), height: CVPixelBufferGetHeight(image)) {
@@ -91,6 +106,20 @@ final class VideoCapture {
         }
     }
 
+    /// Once a second of frame time: delivered fps, memory and thermal state, so the summary shows trends, not only
+    /// the endpoints.
+    private func sample(time: TimeInterval, memoryMB: Double) {
+        guard sampleThrottle.fire(now: time) else { return }
+        if let window, time > window.time {
+            fps = Double(frameIndex - window.frames) / (time - window.time)
+        }
+        window = (time, frameIndex)
+        let state = ProcessInfo.processInfo.thermalState
+        timeline.append(SpikeSample(
+            t: elapsed, fps: fps, memoryMB: memoryMB, thermal: Self.name(state), dropped: dropped
+        ))
+    }
+
     func stop(memoryMB: Double) {
         guard isRecording else { return }
         isRecording = false
@@ -98,10 +127,13 @@ final class VideoCapture {
         self.spike = nil
         let summary = SpikeSummary(
             device: Self.deviceModel(),
+            arkitFormatFPS: formatFPS,
+            arkitFormatResolution: formatResolution,
             imageWidth: spike.writer.width,
             imageHeight: spike.writer.height,
             frames: frameIndex,
             durationS: elapsed,
+            meanFPS: elapsed > 0 ? Double(frameIndex - 1) / elapsed : 0,
             poolDrops: poolDrops,
             copyP50Ms: Self.percentile(copyMs, 0.5),
             copyP95Ms: Self.percentile(copyMs, 0.95),
@@ -109,7 +141,8 @@ final class VideoCapture {
             maxThermal: Self.name(maxThermal),
             memoryStartMB: startMemoryMB,
             memoryEndMB: memoryMB,
-            constants: Dictionary(uniqueKeysWithValues: RecorderConstants.current.metaRows.map { ($0.key, $0.value) })
+            constants: Dictionary(uniqueKeysWithValues: RecorderConstants.current.metaRows.map { ($0.key, $0.value) }),
+            timeline: timeline
         )
         let summaryURL = spike.writer.url.deletingPathExtension().appendingPathExtension("json")
         let logger = logger
@@ -226,13 +259,25 @@ nonisolated final class SpikeWriter: @unchecked Sendable {
     }
 }
 
+/// One second of the spike.
+nonisolated struct SpikeSample: Encodable, Sendable {
+    var t: Double
+    var fps: Double
+    var memoryMB: Double
+    var thermal: String
+    var dropped: Int
+}
+
 /// What `r1-<stamp>.json` holds.
 nonisolated struct SpikeSummary: Encodable, Sendable {
     var device: String
+    var arkitFormatFPS: Int
+    var arkitFormatResolution: String
     var imageWidth: Int
     var imageHeight: Int
     var frames: Int
     var durationS: Double
+    var meanFPS: Double
     var poolDrops: Int
     var copyP50Ms: Double
     var copyP95Ms: Double
@@ -241,6 +286,7 @@ nonisolated struct SpikeSummary: Encodable, Sendable {
     var memoryStartMB: Double
     var memoryEndMB: Double
     var constants: [String: String]
+    var timeline: [SpikeSample]
     var imagesWritten = 0
     var writerSkips: [String: Int] = [:]
     var droppedPercent: Double = 0
