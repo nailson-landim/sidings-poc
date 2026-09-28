@@ -813,8 +813,13 @@ The T3 glue becomes the real recorder, and the spike toggle goes away:
 - The HUD shows elapsed time, frames, images dropped, MB written and free space.
 - The ARKit → record conversion lives in `ARRecordAdapter.swift` (P13).
 
-- [ ] The compile check is clean; `swift test` is green.
-- [ ] **Device:** the user records 1 minute on the iPhone 13 and copies it through Finder. `planelab info` shows ≥ 99 % of frames logged, and the image drop rate.
+- [x] The compile check is clean; `swift test` is green.
+- [ ] **Device:** the user records 1 minute on the iPhone 13 and copies it through Finder. `planelab info` shows ≥ 99 % of frames logged, and the image drop rate. *(Finder can't open app folders (T3), so the copy is done with `devicectl`.)*
+- **Code (2026-09-28):**
+  - The Record/Stop button, `SessionRecorder` and `ARRecordAdapter` replace the spike (`VideoCapture.swift` is removed).
+  - Reset, mode change, pause, interruption and error stop the recording with `reset`, `mode_change`, `pause`, `interruption` and `error`.
+  - Record start and stop become `event` rows. `meta` holds the device, OS, LiDAR, detection mode, world alignment, video format, ARKit's format and every `const.*`.
+  - Tracking events, background and low disk follow in T10.
 - **Verify:** compile check; `planelab info <session>`
 - **Depends on:** T3, T5, T6.
 - **Files:** `SidingsAR/Recording/{SessionRecorder,ARRecordAdapter}.swift`, `SidingsAR/HUDView.swift`, `SidingsAR/ARSessionController.swift`; `SidingsAR/Recording/VideoCapture.swift` is removed

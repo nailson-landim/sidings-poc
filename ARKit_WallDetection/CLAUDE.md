@@ -23,7 +23,7 @@ xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR \
 ## Where code goes
 
 - **`PlaneKit/`**: anything expressible without ARKit or RealityKit (geometry, arbitration, smoothing, throttling, mesh-data generation, and the Plane Lab recorder in `Recording/`). The plane code imports only `simd` and Foundation. `Recording/` may also import AVFoundation, CoreVideo and SQLite3, which all exist on macOS, so the whole write path is tested with `swift test` (`../SPEC.md` L11). Never ARKit, RealityKit or UIKit. Every change here gets Swift Testing cases in `PlaneKit/Tests/PlaneKitTests/`. Tests stay on disk.
-- **`SidingsAR/`**: ARKit/RealityKit/UIKit glue. `PlaneAnchorAdapter` is the only place that converts ARKit types into PlaneKit types.
+- **`SidingsAR/`**: ARKit/RealityKit/UIKit glue. `PlaneAnchorAdapter` (viewer) and `Recording/ARRecordAdapter` (recorder) are the only places that convert ARKit types into PlaneKit types (`../SPEC.md` §17.4 P13).
 - **`legacy/`**: read-only reference. Don't modify or build it.
 
 ## Architecture invariants
@@ -33,7 +33,8 @@ xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR \
 - **ARKit owns anchors.** Suppression is visual (dim or hide). Never remove anchors from the session as a side effect of NMS.
 - **One clock:** `lastFrameTime` (`ARFrame.timestamp`) drives every `Throttle` and `RebuildGate`. Don't mix in `CACurrentMediaTime()`.
 - **Hysteresis counts resolves, not seconds.** Changing `resolveInterval` changes the real-time meaning of `challengerFrames`.
-- **Never retain `ARFrame`s.** Read what you need inside `session(_:didUpdate frame:)`.
+- **Never retain `ARFrame`s.** Read what you need inside `session(_:didUpdate frame:)`. The recorder copies `capturedImage` into its own pool buffer there and hands only that copy to `SessionWriter`.
+- **The recorder never blocks the delegate.** `SessionWriter.enqueue` takes a lock and hands off to its queue. A full queue drops the frame, and a busy pool logs the frame without an image.
 
 ## Memory rules (v2.1; they fixed a runaway-RAM regression)
 

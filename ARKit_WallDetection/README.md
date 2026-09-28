@@ -111,7 +111,11 @@ The gap between the origin and the center shows that ARKit anchors a plane where
   - Anchor markers
   - Hide duplicates
   - RealityKit render statistics
-  - **Rec video (R1 spike)**: temporary, for Plane Lab task T3 (`../SPEC.md` §18). It copies every camera image into a 4-buffer pool and encodes HEVC while the viewer runs. A red row shows seconds, fps, images dropped, copy time p95 and thermal state (0–3). Output goes to `Documents/Spikes/r1-<stamp>.mov` plus a `.json` with ARKit's declared video format, the totals and a once-per-second timeline of fps, memory and thermal state. The files are visible in Finder and the Files app, or can be pulled with `devicectl` (see `CLAUDE.md`). Reset, pause, an interruption or a session error stop it. T7 replaces it with the real Record button.
+- **Record / Stop (red):** records a Plane Lab session (`../SPEC.md` §4) into `Documents/Sessions/<yyyyMMdd-HHmmss>.planelab/`: `session.sqlite` (pose, intrinsics, raw feature points and ids for every frame, plus `meta`) and `video.mov` (HEVC, one image per frame). The viewer keeps running.
+  - While recording, a red row shows seconds, frames logged, frames dropped (write queue full), frames without an image (pool busy), MB written and free GB.
+  - After Stop, one line reports what was saved.
+  - Reset, a detection-mode change, pausing, an interruption or a session error stop and save the recording first, with the reason in `meta.stop_reason`.
+  - Get sessions onto the Mac with `devicectl` (see `CLAUDE.md`), then run `python -m planelab info <bundle>` (`../PlaneLab/`).
 - **Reset:** clears all anchors and tracker state, and restarts tracking.
 
 ### Banners and overlays
@@ -231,7 +235,10 @@ ARKit_WallDetection/
 │   ├── AnchorMarkers.swift      Origin/center spheres + one boundary-points mesh
 │   ├── LabelOverlay.swift       Screen-space UIKit labels
 │   ├── PlaneStyle.swift         Colors, opacities, label text
-│   └── MemoryFootprint.swift    phys_footprint for the HUD
+│   ├── MemoryFootprint.swift    phys_footprint for the HUD
+│   └── Recording/               Plane Lab recorder glue
+│       ├── ARRecordAdapter.swift  ARFrame → FrameRecord (with PlaneAnchorAdapter, the only ARKit → PlaneKit conversions)
+│       └── SessionRecorder.swift  Record/Stop, the capture path, HUD stats, meta; SessionWriter does the writing
 ├── PlaneKit/                    Swift package with no ARKit or RealityKit; tested on the Mac
 │   ├── Sources/PlaneKit/
 │   │   ├── PlaneObservation.swift  ARKit-free plane snapshot; world normal/center/boundary/area
@@ -314,3 +321,8 @@ v1 looked "dirty" mainly because of bugs, not ARKit:
 - **Memory:** v2.0 grew steadily during a scan; the causes are listed under [Rendering and memory budget](#rendering-and-memory-budget). The v2.1 before/after number is *to be recorded*: read "mem MB" after about 1 min of scanning the same room.
 - **LiDAR vs. non-LiDAR** (iPhone 13 Pro vs. iPhone 13, same room): *to be recorded.*
 - **NMS effect:** a "small improvement" by eye so far; not tuned.
+- **Recording load, iPhone 13 (Plane Lab spike R1, 2026-09-28, two runs of 96 s and 69 s while charging):**
+  - Copying each 1920 × 1440 camera image on the main thread costs p50 0.6 ms and p95 under 1 ms.
+  - HEVC encoding dropped 0.15 % of images (pool only) and caused no stutter.
+  - **ARKit's format promises 60 fps but delivered a flat 30 Hz,** with thermal state already *serious*.
+  - *mem MB* rose from about 300 to 440 in a minute. Whether that comes from the viewer or the recording is still open (Plane Lab Checkpoint 2A).

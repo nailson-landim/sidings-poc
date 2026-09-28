@@ -5,8 +5,10 @@ struct HUDView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            if controller.video.isRecording {
-                videoSpikeStats
+            if controller.recorder.isRecording {
+                recordingStats
+            } else if let result = controller.recorder.lastResult {
+                Text(result).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
             }
             HStack {
                 stat("planes", "\(controller.keptCount)/\(controller.rawCount)")
@@ -26,15 +28,12 @@ struct HUDView: View {
                     Toggle("Anchor markers", isOn: $controller.showMarkers)
                     Toggle("Hide duplicates", isOn: $controller.hideSuppressed)
                     Toggle("Render statistics", isOn: $controller.showStatistics)
-                    Toggle("Rec video (R1 spike)", isOn: Binding(
-                        get: { controller.video.isRecording },
-                        set: { controller.setVideoSpike($0) }
-                    ))
                 } label: {
                     Label("Debug", systemImage: "ladybug")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                recordButton
                 Button("Reset", systemImage: "arrow.counterclockwise") { controller.restart() }
                     .buttonStyle(.borderedProminent)
             }
@@ -46,15 +45,25 @@ struct HUDView: View {
         .padding(.bottom, 8)
     }
 
-    /// Spike R1 readout (`../SPEC.md` §18 T3).
-    private var videoSpikeStats: some View {
-        let video = controller.video
+    private var recordButton: some View {
+        let recording = controller.recorder.isRecording
+        return Button(recording ? "Stop" : "Record", systemImage: recording ? "stop.circle.fill" : "record.circle") {
+            controller.toggleRecording()
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.red)
+    }
+
+    /// Plane Lab recording readout (`../SPEC.md` §4 R2).
+    private var recordingStats: some View {
+        let recorder = controller.recorder
         return HStack {
-            stat("REC s", String(format: "%.0f", video.elapsed))
-            stat("fps", String(format: "%.0f", video.fps))
-            stat("dropped", "\(video.dropped)")
-            stat("copy p95", String(format: "%.1f ms", video.copyP95Ms))
-            stat("thermal", "\(video.thermal.rawValue)")
+            stat("REC s", String(format: "%.0f", recorder.elapsed))
+            stat("frames", "\(recorder.frames)")
+            stat("dropped", "\(recorder.framesDropped)")
+            stat("no image", "\(recorder.imagesDropped)")
+            stat("MB", String(format: "%.0f", recorder.megabytes))
+            stat("free GB", String(format: "%.1f", recorder.freeGB))
         }
         .foregroundStyle(.red)
     }
