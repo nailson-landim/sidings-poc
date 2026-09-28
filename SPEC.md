@@ -214,7 +214,7 @@ In Blender these become timeline markers.
 
 - `video.mov`: HEVC, at the captured-image resolution (typically 1920 × 1440), in landscape sensor orientation, with no rotation metadata.
 - The video frame for log frame `idx` has presentation time `idx / video_fps`. A frame without an image leaves a gap in the timestamps and has `has_image = 0`, so video time always maps back to `idx`.
-- **`video_fps` is a time base, not the capture rate.** ARKit can deliver fewer frames than its format promises: T3 measured 30 Hz against a promised 60. Video time still counts log frames, so the movie can play faster than real time in QuickTime. Blender maps clip frames one to one with timeline frames (T2) and takes its playback rate from `frame.t` (§6).
+- **`video_fps` is a time base, not the capture rate.** ARKit can deliver fewer frames than its format promises: T3 measured 30 Hz against a promised 60 at thermal `serious`, while T7 got 60 Hz at `fair`. Video time still counts log frames, so the movie can play faster than real time in QuickTime. Blender maps clip frames one to one with timeline frames (T2) and takes its playback rate from `frame.t` (§6).
 - A keyframe at least every 0.5 s of images (30 at 60 fps), so reaching any frame decodes at most 30 images and seeking in Blender stays fast. The encoder counts images, not time, so skipped images stretch the gap in time (T1: 0.67 s around a 10-frame hole).
 - When the first image isn't log frame 0, `AVAssetWriter` keeps the gap as an empty edit at the start of the track. FFmpeg applies it (the stream's `start_time` is the gap), but `AVAssetReaderTrackOutput` reports media time without it (T1, 2026-09-28). **Blender drops it** (T2), so the importer places the clip at the first log frame with an image (§6, §15 R2).
 - Written as a fragmented movie (`movieFragmentInterval` ≈ 1 s), so a killed recording still plays up to its last fragment.
@@ -575,7 +575,7 @@ def fit_vertical_plane(
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R1 | HEVC at 1440p60 plus feature-point logging overloads the iPhone 13: dropped images, heat, worse tracking | **Answered by T3 (2026-09-28), closed by the user; re-checked at Checkpoint 2A.** Two runs on the iPhone 13 (96 s and 69 s, phone charging): copying on the main thread costs p95 < 1 ms, 0.15 % of images were dropped (pool only, never the encoder), and there was no stutter. ARKit's format promised **60 fps but delivered a flat 30.0 Hz** from the first second, with thermal state already `serious`, most likely ARKit halving the camera rate under heat. **Decision:** keep a full-resolution image for every delivered frame (no P5 fallback). Keep video time as `idx / video_fps`, a frame counter. Blender plays at the rate measured from `frame.t` (§3.4, §6). Memory rose 300 → 443 MB in 68 s, in steps; whether that's the viewer or the recording is measured at Checkpoint 2A. |
+| R1 | HEVC at 1440p60 plus feature-point logging overloads the iPhone 13: dropped images, heat, worse tracking | **Answered by T3 (2026-09-28), closed by the user; re-checked at Checkpoint 2A.** Two runs on the iPhone 13 (96 s and 69 s, phone charging): copying on the main thread costs p95 < 1 ms, 0.15 % of images were dropped (pool only, never the encoder), and there was no stutter. ARKit's format promised **60 fps but delivered a flat 30.0 Hz** from the first second, with thermal state already `serious`, most likely ARKit halving the camera rate under heat. **T7 backs this up:** with the real recorder at thermal `fair`, it delivered a steady 60 Hz for 48 s with 0 frames dropped. **Decision:** keep a full-resolution image for every delivered frame (no P5 fallback). Keep video time as `idx / video_fps`, a frame counter. Blender plays at the rate measured from `frame.t` (§3.4, §6). Memory rose 300 → 443 MB in 68 s, in steps; whether that's the viewer or the recording is measured at Checkpoint 2A. |
 | R2 | Blender's movie clips mishandle timestamp gaps or seek slowly in HEVC, so video and timeline drift | **Answered by T2 (2026-09-28).** Blender 5.0.1 (MovieClip through the compositor, and sequencer strips, default timecode) **drops a leading gap**: the first image lands on the clip's first frame. **Gaps later in the file are kept**: frames inside a gap hold the previous image. **Fix, in the importer:** `clip.frame_start = 1 + <first log frame with has_image = 1>`. That gave 0 mismatches over 72 sampled frames, including every frame right after a gap. Random access costs about 50 ms of decoding per frame, the same as in-order access (keyframes ≤ 30 images apart), so no proxies or timecode index are needed. |
 | R3 | Too much memory to show any frame's averaged cloud (it can reach tens of thousands of points, across thousands of frames) | Snapshots only at the fit cadence, stored as changes since the last snapshot, with periodic full snapshots. Measured against S12. |
 | R4 | Pure Python is too slow | Vectorized numpy, fitting every N frames, subsampling. Measured against S9. |
@@ -814,7 +814,14 @@ The T3 glue becomes the real recorder, and the spike toggle goes away:
 - The ARKit → record conversion lives in `ARRecordAdapter.swift` (P13).
 
 - [x] The compile check is clean; `swift test` is green.
-- [ ] **Device:** the user records 1 minute on the iPhone 13 and copies it through Finder. `planelab info` shows ≥ 99 % of frames logged, and the image drop rate. *(Finder can't open app folders (T3), so the copy is done with `devicectl`.)*
+- [x] **Device:** the user records 1 minute on the iPhone 13 and copies it through Finder. `planelab info` shows ≥ 99 % of frames logged, and the image drop rate. *(Finder can't open app folders (T3), so the copy is done with `devicectl`.)*
+- **Device result (2026-09-28, user's recording `20260928-160746`, 48 s):**
+  - **2,863 frames, 0 dropped (100 % logged).** 7 frames have no image (0.24 %): a burst at frames 5–9 while the encoder started, plus two isolated ones.
+  - **A steady 60.0 Hz delivered** (median interval 16.67 ms, one 50 ms gap) at thermal state *fair* throughout.
+  - 100 % normal tracking; about 250 points per frame, p50 1.4 m and max 7.2 m (indoors).
+  - The bundle is sealed to 2 files: 16.9 MB SQLite plus 48 MB video, about 82 MB/min.
+  - `planelab info` took 0.55 s.
+  - The folder pulls in one `devicectl copy` (root `README.md`).
 - **Code (2026-09-28):**
   - The Record/Stop button, `SessionRecorder` and `ARRecordAdapter` replace the spike (`VideoCapture.swift` is removed).
   - Reset, mode change, pause, interruption and error stop the recording with `reset`, `mode_change`, `pause`, `interruption` and `error`.

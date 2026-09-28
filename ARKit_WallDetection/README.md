@@ -326,3 +326,4 @@ v1 looked "dirty" mainly because of bugs, not ARKit:
   - HEVC encoding dropped 0.15 % of images (pool only) and caused no stutter.
   - **ARKit's format promises 60 fps but delivered a flat 30 Hz,** with thermal state already *serious*.
   - *mem MB* rose from about 300 to 440 in a minute. Whether that comes from the viewer or the recording is still open (Plane Lab Checkpoint 2A).
+- **First real recording, iPhone 13 (Plane Lab T7, 2026-09-28, 48 s, thermal *fair*):** a steady **60 Hz** delivered. 2,863 frames were logged with 0 dropped, 7 had no image (0.24 %, mostly while the encoder started), and tracking was 100 % normal. The session was 82 MB/min (16.9 MB SQLite plus 48 MB HEVC). So the 30 Hz in the spike came from heat, not from recording.

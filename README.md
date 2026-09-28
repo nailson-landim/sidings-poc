@@ -37,7 +37,9 @@ This is the native-ARKit baseline for **CONSOLIDATION D3**: measure what ARKit d
 - The iPhone 13 records every delivered image without stutter. ARKit delivers about 30 Hz there, against a promised 60.
 - Blender keeps the video in step, as long as the clip starts at the first frame with an image.
 
-The recorder's core is built in PlaneKit (video writer, SQLite store, session writer), with a contract fixture. The Python reader reads that fixture. Next: recording on the phone (T7) and importing into Blender (T8–T9).
+The recorder is built: the core in PlaneKit (video writer, SQLite store, session writer), plus **Record/Stop** in SidingsAR.
+- **First real recording** (2026-09-28, iPhone 13, 48 s): 2,863 frames at a steady **60 Hz**, none dropped, and 0.24 % of frames without an image. That's about 82 MB/min.
+- **Next:** importing into Blender (T8–T9).
 
 ## Quick start
 
@@ -50,6 +52,29 @@ pytest --cov=planelab && python -m planelab info ../session-format/fixtures/v1/t
 ```
 
 Requirements, usage and architecture are in [`ARKit_WallDetection/README.md`](ARKit_WallDetection/README.md).
+
+## Recordings: phone → Mac
+
+SidingsAR's **Record** saves sessions to `Documents/Sessions/<yyyyMMdd-HHmmss>.planelab/` on the phone. Finder's Files tab lists the app, but it can't open or copy its folders, so pull them with `devicectl`. It only reads the app's container, over the cable or the network, and installs nothing. Keep sessions on the Mac under `~/PlaneLab/sessions/`, which is outside git (they hold video of houses and GPS positions).
+
+```bash
+xcrun devicectl list devices                       # the iPhone's identifier (the iPhone 13: 782F0FCC-0A00-5F6F-82AE-AC575194E5CA)
+DEVICE=782F0FCC-0A00-5F6F-82AE-AC575194E5CA
+APP=(--domain-type appDataContainer --domain-identifier br.com.neuralnexgen.sidingsar)
+
+# What's on the phone
+xcrun devicectl device info files --device $DEVICE "${APP[@]}" --subdirectory Documents/Sessions
+
+# Pull one session: the whole .planelab folder in one go
+NAME=20260928-160746.planelab
+xcrun devicectl device copy from --device $DEVICE "${APP[@]}" \
+  --source Documents/Sessions/$NAME --destination ~/PlaneLab/sessions/$NAME
+
+# Summarize it
+cd PlaneLab && source .venv/bin/activate && python -m planelab info ~/PlaneLab/sessions/$NAME
+```
+
+`"${APP[@]}"` passes the array as separate arguments in both zsh and bash. Spike outputs live under `Documents/Spikes/` and are pulled the same way.
 
 ## How work is organized
 

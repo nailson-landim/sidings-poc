@@ -1,6 +1,6 @@
 # HANDOFF: Plane Lab build
 
-*Last updated 2026-09-28 at `e90e034`. Read this first when resuming; `SPEC.md` has the full detail.*
+*Last updated 2026-09-28 after T7 closed. Read this first when resuming; `SPEC.md` has the full detail.*
 
 ## Resume prompt
 
@@ -21,7 +21,7 @@ Paste this into a new session:
 | T4 Schema v1, records, packing, contract fixture | Done | `899292c` |
 | T5 Session writer | Done | `8686b42` |
 | T6 Python package, reader, `planelab info` | Done | `08f55cb` |
-| T7 Record/Stop in SidingsAR | **Code done; waiting for the user's 1-minute device run** | `e90e034` |
+| T7 Record/Stop in SidingsAR | Done. The user's recording `20260928-160746`: 2,863 frames at 60 Hz, 0 dropped, 0.24 % without an image | `e90e034` + docs commit |
 | T8–T26 | Not started | — |
 
 The checks were green at `e90e034`:
@@ -32,25 +32,19 @@ The checks were green at `e90e034`:
 
 ## Waiting on the user
 
-1. **T7 device run.** The user installs from Xcode, taps **Record**, walks for about 1 minute and taps **Stop**. Then:
-   - Pull the session (see *Commands*) into `~/PlaneLab/sessions/`.
-   - Run `python -m planelab info <bundle>`.
-   - Tick T7 if ≥ 99 % of frames were logged, and record the image drop rate and delivered fps.
-   - Expect about 30 fps delivered (R1).
-2. **T2 scrub check.** The user opens `~/PlaneLab/spikes/r2/r2_scrub.blend`, presses Numpad 0 to look through the camera, and scrubs and plays. They say whether it feels responsive.
+1. **T2 scrub check.** The user opens `~/PlaneLab/spikes/r2/r2_scrub.blend`, presses Numpad 0 to look through the camera, and scrubs and plays. They say whether it feels responsive.
 
 ## Next steps for Claude
 
 In order:
-1. **Finish T7** once the user's session arrives (above).
-2. **T8: Blender extension and import (camera and raw points).**
+1. **T8: Blender extension and import (camera and raw points).**
    - Build the P6 layout: `PlaneLab/blender/planelab_blender/`, with `vendor/planelab` as a symlink to `src/planelab`.
    - Write `scripts/build_extension.sh`, which copies the real core into a staging folder and builds the zip.
    - Set up the local-repository dev loop.
    - Import: the scene fps is the **delivered** rate, `session.delivered_fps()`, not `video_fps` (§3.4). Convert ARKit to Blender axes as `(x, −z, y)`. Set lens, shift and resolution from the intrinsics. The raw-points layer comes from a frame-change handler. `event` rows become markers.
    - Headless smoke test on `session-format/fixtures/v1/tiny.planelab`.
-3. **T9: video behind the camera.** The clip starts at timeline frame `1 + session.first_image_idx()`. Blender drops a leading gap and keeps later ones (§15 R2). The user then checks S11 on the T7 recording: the points sit on the image.
-4. **Checkpoint 1:** the user reviews. Then comes Phase 2, with two parallel tracks:
+2. **T9: video behind the camera.** The clip starts at timeline frame `1 + session.first_image_idx()`. Blender drops a leading gap and keeps later ones (§15 R2). The user then checks S11 on the T7 recording (`~/PlaneLab/sessions/20260928-160746.planelab`): the points sit on the image.
+3. **Checkpoint 1:** the user reviews. Then comes Phase 2, with two parallel tracks:
    - **2A**, recorder, T10–T13: stop reasons and events, ARKit anchors, permissions and location, the Sessions sheet.
    - **2B**, lab core, T14–T20: synth, config, gate and accumulator, RANSAC, search, tracker, pipeline.
 
@@ -58,7 +52,7 @@ In order:
 
 Each one is also recorded where it belongs.
 
-- **ARKit on the iPhone 13 delivered a flat 30 Hz against a promised 60**, with thermal already *serious* while charging. `video_fps` is only a frame counter (PTS = `idx / 60`), and Blender's playback rate comes from `frame.t`. Re-check 60 Hz, heat and memory at Checkpoint 2A with an unplugged, cool phone and a 1-minute no-Rec baseline. (§3.4, §15 R1)
+- **ARKit's rate on the iPhone 13 follows heat.** It promises 60 fps, delivered a flat 30 Hz at thermal *serious* (charging, spike runs) and a steady 60 Hz at *fair* (T7). Also in `CONSOLIDATION.md` §10b. `video_fps` is only a frame counter (PTS = `idx / 60`), and Blender's playback rate comes from `frame.t`. Re-check 60 Hz, heat and memory at Checkpoint 2A with an unplugged, cool phone and a 1-minute no-Rec baseline. (§3.4, §15 R1)
 - **Blender drops a leading gap in the video but keeps later ones.** Place the clip at the first image. Random access costs about 50 ms of decoding; no proxies are needed. (§15 R2, `PlaneLab/spikes/README.md`)
 - **Keyframes are capped at 30 encoded images, not 0.5 s of time.** Skipped images stretch the time between keyframes. (§3.4)
 - **AVAssetReaderTrackOutput** reports media time in passthrough (it ignores the leading empty edit). When decoding, it applies the edit and adds an extra blank frame. `VideoProbe` handles both. (`ARKit_WallDetection/CLAUDE.md`)
@@ -93,12 +87,8 @@ cd PlaneLab && source .venv/bin/activate
 ruff check . && ruff format --check . && pytest --cov=planelab --cov-fail-under=85
 python -m planelab info <bundle>
 
-# Pull files from the iPhone 13 (UDID 782F0FCC-0A00-5F6F-82AE-AC575194E5CA). A 13 Pro is also paired: `xcrun devicectl list devices`.
-xcrun devicectl device info files --device <udid> --domain-type appDataContainer \
-  --domain-identifier br.com.neuralnexgen.sidingsar --subdirectory Documents
-xcrun devicectl device copy from --device <udid> --domain-type appDataContainer \
-  --domain-identifier br.com.neuralnexgen.sidingsar --source Documents/Sessions/<name>.planelab \
-  --destination ~/PlaneLab/sessions/<name>.planelab
+# Pull sessions from the phone: see the root README, "Recordings: phone → Mac"
+# (iPhone 13 UDID 782F0FCC-0A00-5F6F-82AE-AC575194E5CA; a 13 Pro is also paired: `xcrun devicectl list devices`)
 
 # Regenerate the contract fixture (only after a deliberate format change + schema_version bump)
 cd ARKit_WallDetection/PlaneKit && PLANELAB_WRITE_FIXTURES=1 swift test --filter writeFixtures
@@ -116,7 +106,7 @@ Blender 5.0.1's `sys.executable` is `/Applications/Blender.app/Contents/Resource
 |---|---|
 | `~/PlaneLab/spikes/r1/` | Both R1 runs from the iPhone 13 (`.mov` + `.json` with timelines) |
 | `~/PlaneLab/spikes/r2/` | The R2 spike video, manifest, report and `r2_scrub.blend` |
-| `~/PlaneLab/sessions/` | Where real recordings go on the Mac (empty so far) |
+| `~/PlaneLab/sessions/` | Real recordings on the Mac. `20260928-160746.planelab`: the T7 recording (48 s indoors, iPhone 13, 60 Hz) |
 | `~/PlaneLab/logs/planelab.log` | Python log |
 | `~/.claude/projects/-Volumes-512G-Developer-beam-sidings-poc/memory/` | Claude memories: working preferences |
 | `ARKit_WallDetection/tasks/` | Earlier SidingsAR plan, with 48 unticked items from other work. Not touched by Plane Lab (P1) |
