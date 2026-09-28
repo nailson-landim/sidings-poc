@@ -38,8 +38,8 @@ This is the native-ARKit baseline for **CONSOLIDATION D3**: measure what ARKit d
 - Blender keeps the video in step, as long as the clip starts at the first frame with an image.
 
 The recorder is built: the core in PlaneKit (video writer, SQLite store, session writer), plus **Record/Stop** in SidingsAR.
-- **First real recording** (2026-09-28, iPhone 13, 48 s): 2,863 frames at a steady **60 Hz**, none dropped, and 0.24 % of frames without an image. That's about 82 MB/min.
-- **Next:** importing into Blender (T8–T9).
+- **Recordings** (2026-09-28, iPhone 13, 60 Hz, none dropped): recording → Mac → Blender works end to end. Blender shows the camera path, video, raw points and ARKit's planes in step (checked by the user).
+- **Wrap-up:** [`28_SEP_26-HANDOFF.md`](28_SEP_26-HANDOFF.md). **Next:** recorder robustness (T10), then our own plane fitting (T14–T20).
 
 ## Quick start
 

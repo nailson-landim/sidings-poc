@@ -902,7 +902,7 @@ Anchor callbacks enqueue `add`, `update` and `remove` rows through `ARRecordAdap
   - Planes that exist when recording starts are logged as `add` at frame 0.
   - The Mark button is in.
   - Blender shows ARKit's planes (P17).
-- [ ] **Device:** a room recording has `plane_anchor` rows, and `planelab info` counts the adds, updates and removes.
+- [x] **Device:** a room recording has `plane_anchor` rows, and `planelab info` counts the adds, updates and removes. *(2026-09-28, recording `20260928-181436`, 20 s: `2 ARKit planes: 2 add, 371 update` (a floor and an unclassified horizontal plane), shown in Blender next to the points and video. User: "the test was flawless". The Mark button wasn't tapped in this recording, so it hasn't been exercised on the device yet.)*
 - **Verify:** `swift test`; compile check; device run.
 - **Depends on:** T7.
 - **Files:** `SidingsAR/Recording/{ARRecordAdapter,SessionRecorder}.swift`, `SidingsAR/ARSessionController.swift`, `SidingsAR/HUDView.swift`, `PlaneKit/Tests/PlaneKitTests/Recording/PackingTests.swift`
