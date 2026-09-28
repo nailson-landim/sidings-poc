@@ -775,10 +775,16 @@ Minimal glue behind a temporary HUD toggle, *Rec video*. Inside the frame delega
 
 `SessionWriter` runs on its own serial queue over `SessionDatabase`: WAL mode, one transaction per `commitIntervalS` (with the clock injected for tests), a bounded queue that drops whole frames and counts them, and finalize (counters, `stopped_at`, `stop_reason`). The pixel buffer is handed to `VideoWriter` through one `@unchecked Sendable` box (§17.5).
 
-- [ ] With a stalled database (a test double), `enqueue` never blocks, drops whole frames, and `frames_dropped` matches.
-- [ ] A database that was never finalized opens and holds every frame committed before the last batch.
-- [ ] It builds under strict concurrency with no warnings.
+- [x] With a stalled database (a test double), `enqueue` never blocks, drops whole frames, and `frames_dropped` matches.
+- [x] A database that was never finalized opens and holds every frame committed before the last batch.
+- [x] It builds under strict concurrency with no warnings.
 - **Verify:** `swift test`
+- **Result (2026-09-28):** done. 68 tests pass three runs in a row; the compile check is clean. Design choices:
+  - The writer assigns `idx` only to accepted frames, so `idx` has no holes and `lastFrameIndex` stamps anchors, fixes and events.
+  - The stall "test double" is suspending the writer queue: 100 enqueues took under 50 ms, with 80 dropped.
+  - Tests turn the commit timer off and call `flush()` instead of injecting a clock.
+  - Video appends run on the same serial queue, so each record's `has_image` is known before it's written.
+  - Counters sit behind a `Synchronization.Mutex`.
 - **Depends on:** T4.
 - **Files:** `PlaneKit/Sources/PlaneKit/Recording/SessionWriter.swift`, `PlaneKit/Tests/PlaneKitTests/Recording/SessionWriterTests.swift`, small edits to `VideoWriter.swift`
 
