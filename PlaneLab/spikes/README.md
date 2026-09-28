@@ -41,6 +41,10 @@ The samples are the first 12 frames, the whole 298–312 stretch, every frame ri
 - **Fix, in the importer:** `clip.frame_start = 1 + <first log frame with has_image = 1>`. The recorder doesn't need to change.
 - **Seeking:** random access costs about 50 ms of decoding per frame on the MovieClip path, the same as in-order access. For the sequencer strip the cost was within noise. These are estimates: the colour-strip baseline (0.36 s of render and PNG work per frame) is subtracted from the measured time, so treat them as ±15 ms. Keyframes at most 30 images apart are enough.
 
-**Still open:** the user scrubs `~/PlaneLab/spikes/r2/r2_scrub.blend` in the Blender UI. The camera background is the clip, placed at frame 4.
+**Still open:** the user scrubs `~/PlaneLab/spikes/r2/r2_scrub.blend` in the Blender UI.
+- The file holds only `PhoneCamera`, whose background is the clip, placed at frame 4, and it opens looking through that camera.
+- **The camera is static on purpose:** the spike video is synthetic block patterns with no poses. A camera that follows a recorded path comes with the real import (T8).
+- To rewrite just this file, add `--scrub-only` to the run command.
+- The first version of the file (2026-09-28) was saved from Blender's startup scene, so the default Cube, Light and Camera were still in it, with `PhoneCamera` inside the cube. That's fixed: the file now starts from an empty scene.
 
 **Script gotcha:** in background mode, a render only follows `frame_set` on the *context* scene. Rendering another scene with `render(scene=…)` always gave the same frame, so the script reuses `bpy.context.scene` for every variant.

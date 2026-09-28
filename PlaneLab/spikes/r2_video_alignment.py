@@ -170,7 +170,12 @@ def baseline_seconds(manifest: Manifest, frames: list[int], tmp: Path) -> float:
 
 
 def save_scrub_file(manifest: Manifest, video: Path, path: Path) -> None:
-    """A .blend for the user's check: the clip as a camera background, placed at the first image."""
+    """A .blend for the user's check: only a static camera with the clip as its background, placed at the first
+    image, opening in camera view. The camera doesn't move: the spike video is synthetic and has no poses.
+    """
+    # Start from an empty file: no default cube, light or camera (the camera would sit inside the cube) and none of
+    # the clips the variants loaded.
+    bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = fresh_scene(manifest, "scrub")
     camera = bpy.data.objects.new("PhoneCamera", bpy.data.cameras.new("PhoneCamera"))
     scene.collection.objects.link(camera)
@@ -182,6 +187,13 @@ def save_scrub_file(manifest: Manifest, video: Path, path: Path) -> None:
     background.source = "MOVIE_CLIP"
     background.clip = clip
     background.alpha = 1.0
+    scene.frame_current = 1
+    for screen in bpy.data.screens:
+        for area in screen.areas:
+            if area.type == "VIEW_3D":
+                space = area.spaces.active
+                space.region_3d.view_perspective = "CAMERA"
+                space.overlay.show_overlays = True
     bpy.ops.wm.save_as_mainfile(filepath=str(path))
 
 
@@ -217,10 +229,16 @@ def main(argv: list[str]) -> int:
     parser.add_argument("video", type=Path)
     parser.add_argument("manifest", type=Path)
     parser.add_argument("--report", type=Path, help="JSON report path (default: next to the video)")
+    parser.add_argument("--scrub-only", action="store_true", help="only (re)write r2_scrub.blend, skip the checks")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
     manifest = load_manifest(args.manifest)
+    if args.scrub_only:
+        scrub_path = args.video.expanduser().with_name("r2_scrub.blend")
+        save_scrub_file(manifest, args.video.expanduser(), scrub_path)
+        print(f"scrub file: {scrub_path}")
+        return 0
     frames = sample_frames(manifest)
     log.info("first image at log frame %d; checking %d sampled frames", manifest.first_image, len(frames))
 
