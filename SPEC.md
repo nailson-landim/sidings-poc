@@ -145,7 +145,7 @@ An export to other formats can come later.
 | `lidar` | `0` / `1` |
 | `plane_detection`, `world_alignment` | `both`, `gravity` |
 | `video_width`, `video_height`, `video_fps`, `video_codec`, `video_bitrate` | `1920`, `1440`, `60`, `hevc`, `8000000` |
-| `arkit_format_fps`, `arkit_format_resolution` | `60`, `1920x1440`: the running configuration's `videoFormat`, as promised. The `frame.t` column shows what was delivered. T3 run 1 delivered about 30 Hz, and whether `video_fps` should follow the format or the delivered rate is decided after T3 run 2. |
+| `arkit_format_fps`, `arkit_format_resolution` | `60`, `1920x1440`: the running configuration's `videoFormat`, as promised. The `frame.t` column shows what was delivered; T3 measured 30 Hz against 60 promised (§3.4, §15 R1). |
 | `started_at`, `stopped_at` | ISO 8601 UTC |
 | `stop_reason` | `user` / `interruption` / `reset` / `mode_change` / `low_disk` / `error` |
 | `frames_logged`, `frames_with_image`, `frames_dropped` | counters written when the recording is finalized |
@@ -214,6 +214,7 @@ In Blender these become timeline markers.
 
 - `video.mov`: HEVC, at the captured-image resolution (typically 1920 × 1440), in landscape sensor orientation, with no rotation metadata.
 - The video frame for log frame `idx` has presentation time `idx / video_fps`. A frame without an image leaves a gap in the timestamps and has `has_image = 0`, so video time always maps back to `idx`.
+- **`video_fps` is a time base, not the capture rate.** ARKit can deliver fewer frames than its format promises: T3 measured 30 Hz against a promised 60. Video time still counts log frames, so the movie can play faster than real time in QuickTime. Blender maps clip frames one to one with timeline frames (T2) and takes its playback rate from `frame.t` (§6).
 - A keyframe at least every 0.5 s of images (30 at 60 fps), so reaching any frame decodes at most 30 images and seeking in Blender stays fast. The encoder counts images, not time, so skipped images stretch the gap in time (T1: 0.67 s around a 10-frame hole).
 - When the first image isn't log frame 0, `AVAssetWriter` keeps the gap as an empty edit at the start of the track. FFmpeg applies it (the stream's `start_time` is the gap), but `AVAssetReaderTrackOutput` reports media time without it (T1, 2026-09-28). **Blender drops it** (T2), so the importer places the clip at the first log frame with an image (§6, §15 R2).
 - Written as a fragmented movie (`movieFragmentInterval` ≈ 1 s), so a killed recording still plays up to its last fragment.
@@ -332,7 +333,7 @@ Operators are thin: each calls one core function, so the CLI and Blender can't d
 
 - **Packaging:** a Blender 5.0+ extension (`blender_manifest.toml`) with no bundled wheels. numpy 1.26.4 and `sqlite3` come with Blender 5.0.1 (checked 2026-09-25). The core has no `bpy` import and ships inside the extension's zip.
 - **Import:** *File › Import › Plane Lab Session*. It accepts a `.planelab` folder or its `.zip`; a zip is extracted to a cache folder. It then:
-  - sets the scene fps to `video_fps`
+  - sets the scene fps to the delivered rate: the median frame interval in `frame.t`, rounded (30 or 60 on an iPhone 13). It isn't `video_fps`, which only counts frames (§3.4).
   - sets the frame range to `1 … frames_logged`
   - applies the ARKit → Blender axis conversion (§3.2)
 - **What it builds,** in one collection per session:
@@ -574,7 +575,7 @@ def fit_vertical_plane(
 
 | # | Risk | Mitigation |
 |---|---|---|
-| R1 | HEVC at 1440p60 plus feature-point logging overloads the iPhone 13: dropped images, heat, worse tracking | Hardware encoder, bounded pools, drops and thermal state logged. Fallback: a 30 fps video format, or an image every other frame (the schema already allows `has_image = 0`). **Spike this first.** |
+| R1 | HEVC at 1440p60 plus feature-point logging overloads the iPhone 13: dropped images, heat, worse tracking | **Answered by T3 (2026-09-28), closed by the user; re-checked at Checkpoint 2A.** Two runs on the iPhone 13 (96 s and 69 s, phone charging): copying on the main thread costs p95 < 1 ms, 0.15 % of images were dropped (pool only, never the encoder), and there was no stutter. ARKit's format promised **60 fps but delivered a flat 30.0 Hz** from the first second, with thermal state already `serious`, most likely ARKit halving the camera rate under heat. **Decision:** keep a full-resolution image for every delivered frame (no P5 fallback). Keep video time as `idx / video_fps`, a frame counter. Blender plays at the rate measured from `frame.t` (§3.4, §6). Memory rose 300 → 443 MB in 68 s, in steps; whether that's the viewer or the recording is measured at Checkpoint 2A. |
 | R2 | Blender's movie clips mishandle timestamp gaps or seek slowly in HEVC, so video and timeline drift | **Answered by T2 (2026-09-28).** Blender 5.0.1 (MovieClip through the compositor, and sequencer strips, default timecode) **drops a leading gap**: the first image lands on the clip's first frame. **Gaps later in the file are kept**: frames inside a gap hold the previous image. **Fix, in the importer:** `clip.frame_start = 1 + <first log frame with has_image = 1>`. That gave 0 mismatches over 72 sampled frames, including every frame right after a gap. Random access costs about 50 ms of decoding per frame, the same as in-order access (keyframes ≤ 30 images apart), so no proxies or timecode index are needed. |
 | R3 | Too much memory to show any frame's averaged cloud (it can reach tens of thousands of points, across thousands of frames) | Snapshots only at the fit cadence, stored as changes since the last snapshot, with periodic full snapshots. Measured against S12. |
 | R4 | Pure Python is too slow | Vectorized numpy, fitting every N frames, subsampling. Measured against S9. |
@@ -728,8 +729,8 @@ A headless Blender script loads the T1 spike video as a movie clip. For at least
 Minimal glue behind a temporary HUD toggle, *Rec video*. Inside the frame delegate, each `ARFrame`'s `capturedImage` is copied into the writer's pool, then appended on the writer queue. The frame is never retained. The HUD shows images written and dropped, the copy time p95 and the thermal state, and the same numbers go to `r1-summary.json` next to the video in `Documents/Spikes/`. Adds the file-sharing Info.plist keys (§4 R8) so the files show up in Finder.
 
 - [x] The compile check has no new warnings; `swift test` is green.
-- [ ] **Device:** 5 minutes on the iPhone 13 at the default format. `r1-summary.json` gives the dropped %, copy p95 and highest thermal state. The user reports whether the plane viewer stutters, and *mem MB* at the start and end.
-- [ ] The decision is logged in §15 R1: keep 60 fps images, or take the P5 fallback. `RecorderConstants` is updated to match.
+- [x] **Device:** 5 minutes on the iPhone 13 at the default format. `r1-summary.json` gives the dropped %, copy p95 and highest thermal state. The user reports whether the plane viewer stutters, and *mem MB* at the start and end. *(Two shorter runs, 96 s and 69 s, accepted by the user. The 5-minute run moves to Checkpoint 2A.)*
+- [x] The decision is logged in §15 R1: keep 60 fps images, or take the P5 fallback. `RecorderConstants` is updated to match. *(Full-resolution image per delivered frame; constants unchanged.)*
 - **Verify:** compile check; the device run (ask before installing).
 - **Run 1 (2026-09-28, iPhone 13, 96 s, phone charging, installed by the user from Xcode):**
   - **Copy on the main thread is cheap:** p50 0.62 ms, p95 0.85 ms, max 2.8 ms. The §17.5 risk is retired.
@@ -740,16 +741,17 @@ Minimal glue behind a temporary HUD toggle, *Rec video*. Inside the frame delega
 - **Tooling fixes found by run 1:**
   - Xcode's generated Info.plist ignores `INFOPLIST_KEY_UIFileSharingEnabled`, so the app didn't show in Finder. It now comes from `SidingsAR-Info.plist`.
   - Files can always be pulled with `xcrun devicectl device copy from … --domain-type appDataContainer` (see `ARKit_WallDetection/CLAUDE.md`).
-- **Run 2 needs:** 5 minutes, not charging, starting cool. The `.json` now records ARKit's declared video format and a once-per-second timeline of delivered fps, memory and thermal state. The main HUD row shows fps before and during Rec.
+- **Run 2 (69 s, still charging):** the format promised 60 fps; ARKit delivered a flat 30.0 Hz from the first second, with thermal already `serious` at t = 0. Copy p95 0.96 ms, 0.15 % dropped. Memory went 300 → 318 (4 s) → 404 (30 s) → 443 MB (68 s). Finder's Files tab now lists the app but can't open or copy its folders, so `devicectl` is the dependable pull.
+- **Closed** by the user on 2026-09-28 with the decision in §15 R1. The open points (60 Hz on a cool phone, heat caused by recording, memory growth) move to Checkpoint 2A.
 - **Depends on:** T1.
 - **Files:** `SidingsAR/Recording/VideoCapture.swift`, `SidingsAR/HUDView.swift`, `SidingsAR/ARSessionController.swift`, `SidingsAR.xcodeproj/project.pbxproj` (Info keys only)
 
 #### Checkpoint 0: risks answered
 
-- [ ] `swift test` is green and the compile check is clean.
-- [ ] R1 and R2 have findings and decisions in §15.
-- [ ] If a spike failed with no working fallback: stop and re-spec with the user.
-- [ ] **User:** review before Phase 1.
+- [x] `swift test` is green and the compile check is clean.
+- [x] R1 and R2 have findings and decisions in §15.
+- [x] If a spike failed with no working fallback: stop and re-spec with the user. *(Neither failed.)*
+- [x] **User:** review before Phase 1. *(2026-09-28: "move on". The T2 scrub check in the Blender UI is still open and doesn't block anything.)*
 
 ### Phase 1: Tracer bullet (a real recording reaches Blender)
 
@@ -876,6 +878,7 @@ A sheet lists the recordings (date, duration, size, device, read from `meta`), w
 
 #### Checkpoint 2A: recorder on the device
 
+- [ ] **Conditions (from T3):** phone unplugged and cool. First a 1-minute plain-viewing baseline without Rec, noting HUD fps and *mem MB*. Then note the fps just before Record. This separates ARKit's own 30 Hz and the viewer's memory growth from what recording adds.
 - [ ] **Device (S1):** 5 minutes on the iPhone 13, with *mem MB* staying within ±50 MB of its value 30 s after Record.
 - [ ] **Device (S2):** ≥ 99 % of frames are logged, ≤ 1 % of images are dropped, and the viewer stays smooth.
 - [ ] **Device (S3):** after a force-quit mid-recording, the session opens up to about 1 s before the kill, and the video plays up to its last fragment.
