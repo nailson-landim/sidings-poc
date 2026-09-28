@@ -759,10 +759,15 @@ Minimal glue behind a temporary HUD toggle, *Rec video*. Inside the frame delega
 
 `session-format/schema_v1.sql` with every §3.3 table. The Swift records (`FrameRecord`, `AnchorRecord`, `LocationRecord`, `HeadingRecord`, `EventRecord`), little-endian BLOB packing, and a synchronous `SessionDatabase` that creates the schema and writes `meta` (with the `const.*` rows at open) and rows. Generates the contract fixture (P2, P3).
 
-- [ ] The DDL embedded in Swift matches `schema_v1.sql` exactly.
-- [ ] Every BLOB column round-trips.
-- [ ] `PLANELAB_WRITE_FIXTURES=1 swift test` writes `session-format/fixtures/v1/tiny.planelab/` and `expected.json`. A normal run checks that the committed fixture still matches.
+- [x] The DDL embedded in Swift matches `schema_v1.sql` exactly.
+- [x] Every BLOB column round-trips.
+- [x] `PLANELAB_WRITE_FIXTURES=1 swift test` writes `session-format/fixtures/v1/tiny.planelab/` and `expected.json`. A normal run checks that the committed fixture still matches.
 - **Verify:** `swift test`
+- **Result (2026-09-28):** done. 61 tests in 9 suites pass, the clean build has no warnings, and the iOS compile check is clean. The fixture is described in `session-format/README.md`. Findings:
+  - `seal()` also closes and removes the `-shm` file SQLite leaves after leaving WAL, so a sealed session is one file.
+  - When decoding, `AVAssetReaderTrackOutput` applies the leading empty edit and adds a blank frame for it; in passthrough it reports media time (`ARKit_WallDetection/CLAUDE.md`).
+  - In `expected.json`, NULL columns are left out of rows.
+  - `.gitignore` ignores `*.planelab` except the fixture.
 - **Depends on:** T1 (for the fixture's video).
 - **Files:** `session-format/schema_v1.sql`, `session-format/README.md`, `PlaneKit/Sources/PlaneKit/Recording/{Records,Packing,SessionDatabase}.swift`, `PlaneKit/Tests/PlaneKitTests/Recording/{PackingTests,ContractTests}.swift`
 

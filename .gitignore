@@ -6,3 +6,8 @@ build/
 .swiftpm/
 *.xcuserstate
 .env
+
+# Plane Lab recordings: large, and they hold video of houses and GPS positions (SPEC.md §9).
+# The contract fixture is the one exception.
+*.planelab
+!session-format/fixtures/**/*.planelab

@@ -51,7 +51,12 @@ xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR \
 - Info.plist is generated from `INFOPLIST_KEY_*` build settings **plus** `SidingsAR-Info.plist`, which sits outside the synchronized folder so it isn't copied as a resource. Some keys have no generator setting and are silently dropped; `UIFileSharingEnabled` is one of them. Put those in `SidingsAR-Info.plist`, and check the built app with `plutil -p <app>/Info.plist`.
 - Swift Testing: `#expect(x.mutatingCall())` doesn't compile. Bind to a `let` first.
 - Floating-point boundaries: `10.1 - 10.0 < 0.1`. Don't put test timestamps exactly on a throttle boundary.
-- Video tests: `AVAssetReaderTrackOutput` reports **media** time and ignores the empty edit that `AVAssetWriter` writes for a leading gap. Map timestamps through `track.segments` (`VideoProbe.movieTime`) before comparing them with frame indices.
+- Video tests: `AVAssetWriter` stores a leading gap as an empty edit, and `AVAssetReaderTrackOutput` handles it differently by mode:
+  - **passthrough** (`outputSettings: nil`) reports media time and ignores the edit, so map timestamps through `track.segments` (`VideoProbe.movieTime`);
+  - **decoding** reports movie time with the edit applied, plus one extra blank frame inside the empty edit, so skip frames in empty segments.
+
+  `VideoProbe` handles both.
+- SQLite: `SessionDatabase.seal()` closes the database and deletes the `-shm` file that SQLite leaves behind after leaving WAL mode. A sealed session is one file. Bind an empty BLOB with `sqlite3_bind_zeroblob`, because a nil pointer binds NULL.
 - Shell checks of `ffprobe` output: this Mac's locale uses a decimal comma, so run `awk` with `LC_ALL=C`, or `0.05` parses as `0`.
 - Logging goes through `os.Logger` with subsystem `br.com.neuralnexgen.sidingsar`. No `print`.
 - RealityKit API facts used here: `MeshResource.Contents` → `Model(id:parts:)` → `Part(id:materialIndex:)` with `positions` and `triangleIndices`, and `Instance(id:model:)`. `ARView.project(_:)` returns `CGPoint?`. `BillboardComponent` is available but no longer used.

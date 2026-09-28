@@ -241,6 +241,9 @@ ARKit_WallDetection/
 │   │   ├── RenderBudget.swift      Throttle, RebuildGate, PointMarkerMesh
 │   │   └── Recording/              Plane Lab recorder (../SPEC.md §4), being built
 │   │       ├── Constants.swift     RecorderConstants: every recorder setting, written to each session's meta
+│   │       ├── Records.swift       FrameRecord, AnchorRecord, LocationRecord, HeadingRecord, EventRecord
+│   │       ├── Packing.swift       Little-endian BLOB layouts (matrices, points, ids) with no simd padding
+│   │       ├── SessionDatabase.swift  session.sqlite: schema v1 (copy of ../session-format/schema_v1.sql), WAL, seal
 │   │       └── VideoWriter.swift   HEVC video.mov: time = frame index / fps, gaps, fragments, capped pixel pool
 │   └── Tests/PlaneKitTests/        Swift Testing suites + fixtures (Recording/ has its own helpers)
 ├── legacy/                      The original 2018 SceneKit tutorial (reference only, not maintained)
@@ -249,7 +252,7 @@ ARKit_WallDetection/
 
 ## Testing
 
-`cd PlaneKit && swift test` runs 46 Swift Testing cases in 6 suites:
+`cd PlaneKit && swift test` runs 61 Swift Testing cases in 9 suites:
 
 | Suite | Covers |
 |---|---|
@@ -258,6 +261,9 @@ ARKit_WallDetection/
 | Smoothing & hysteresis | EMA convergence and jump reset, winner stable under ±5% jitter, challenger takeover after the streak, a weak challenger never winning |
 | Render budget | Throttle, RebuildGate (first build, unchanged geometry, deferred change, area delta), octahedra counts, index range and outward winding, subsampling |
 | Recorder constants | Every `RecorderConstants` property becomes one `const.*` meta row |
+| BLOB packing | Column-major little-endian matrices (64 and 36 bytes), 12-byte points, uint64 ids, empty arrays, wrong sizes rejected |
+| Session database | Every table round-trips, a sealed session is one file, empty point BLOBs aren't NULL, mismatched points/ids refused, unknown `schema_version` refused |
+| Session-format contract | The embedded DDL matches `../session-format/schema_v1.sql`; the committed fixture decodes to `expected.json`, and its video holds exactly the `has_image` frames with the right numbers. `PLANELAB_WRITE_FIXTURES=1 swift test --filter writeFixtures` regenerates it |
 | Video writer | HEVC timestamps with gaps (including a leading gap), keyframe spacing, frame numbers surviving encoding, a full pool skipping instead of blocking, out-of-order frames, plane-by-plane copy, and a half-written movie readable up to its last fragment. `PLANELAB_SPIKE_OUT=<dir> swift test --filter spikeVideo` writes the 1920 × 1440 spike video for Plane Lab T2 |
 
 Anything that can be expressed without ARKit or RealityKit goes into `PlaneKit`, with tests. The app target has no unit tests; its behavior is checked on device against the checkpoints in `tasks/todo.md`.

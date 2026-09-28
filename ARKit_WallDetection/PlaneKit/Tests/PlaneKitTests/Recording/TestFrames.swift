@@ -69,9 +69,13 @@ enum TestFrames {
 
 /// What a movie file holds, read back with AVFoundation.
 ///
-/// `AVAssetReaderTrackOutput` reports media time and ignores the track's edit list. When the first image isn't log
-/// frame 0, `AVAssetWriter` keeps the gap as an empty edit at the start of the track (FFmpeg applies it: the stream's
-/// `start_time` is the gap). So every timestamp here is mapped through the track's segments to movie time.
+/// When the first image isn't log frame 0, `AVAssetWriter` keeps the gap as an empty edit at the start of the track
+/// (FFmpeg applies it: the stream's `start_time` is the gap). `AVAssetReaderTrackOutput` treats that edit differently
+/// by mode (measured 2026-09-28):
+/// - **passthrough** (`outputSettings: nil`) reports media time and ignores the edit, so `read` maps timestamps
+///   through the track's segments;
+/// - **decoding** reports movie time with the edit applied and emits one extra blank frame for the empty edit, so
+///   `decodeNumbers` keeps its timestamps and drops frames that fall inside an empty segment.
 struct VideoProbe {
     var codec: FourCharCode
     /// Log frame index of every sample, from its presentation time, in file order.
@@ -117,10 +121,12 @@ struct VideoProbe {
         reader.add(output)
         guard reader.startReading() else { throw ProbeError.cannotRead(reader.error?.localizedDescription ?? "") }
 
+        let emptyRanges = segments.filter(\.isEmpty).map(\.timeMapping.target)
         var result: [(frame: Int, number: Int)] = []
         while let sample = output.copyNextSampleBuffer() {
             guard let image = CMSampleBufferGetImageBuffer(sample) else { continue }
-            let time = movieTime(CMSampleBufferGetPresentationTimeStamp(sample), segments: segments)
+            let time = CMSampleBufferGetPresentationTimeStamp(sample)
+            if emptyRanges.contains(where: { $0.containsTime(time) }) { continue }
             result.append((frameIndex(time, fps: fps), TestFrames.number(in: image)))
         }
         return result
@@ -154,6 +160,36 @@ struct VideoProbe {
         case cannotRead(String)
     }
 }
+
+/// Waits for a free pool buffer, so tests don't drop images by accident.
+func waitForBuffer(_ writer: VideoWriter) async throws -> CVPixelBuffer {
+    let deadline = ContinuousClock.now + .seconds(5)
+    while ContinuousClock.now < deadline {
+        if let buffer = writer.makeBuffer() { return buffer }
+        try await Task.sleep(for: .milliseconds(1))
+    }
+    throw WaitError.timedOut("pool buffer")
+}
+
+func waitUntilReady(_ writer: VideoWriter) async throws {
+    let deadline = ContinuousClock.now + .seconds(5)
+    while !writer.isReady {
+        guard ContinuousClock.now < deadline else { throw WaitError.timedOut("encoder input") }
+        try await Task.sleep(for: .milliseconds(1))
+    }
+}
+
+enum WaitError: Error {
+    case timedOut(String)
+}
+
+/// The repository root (`sidings_poc/`), found from this file's path.
+let repositoryRoot: URL = {
+    var url = URL(fileURLWithPath: #filePath)
+    // Recording/ → PlaneKitTests/ → Tests/ → PlaneKit/ → ARKit_WallDetection/ → sidings_poc/
+    for _ in 0..<6 { url.deleteLastPathComponent() }
+    return url
+}()
 
 /// A scratch folder per test, removed when the test ends.
 struct TempFolder: ~Copyable {

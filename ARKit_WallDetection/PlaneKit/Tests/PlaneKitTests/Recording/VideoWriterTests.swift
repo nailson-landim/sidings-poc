@@ -176,23 +176,3 @@ private func writeNumbered(
     return writer
 }
 
-private func waitForBuffer(_ writer: VideoWriter) async throws -> CVPixelBuffer {
-    let deadline = ContinuousClock.now + .seconds(5)
-    while ContinuousClock.now < deadline {
-        if let buffer = writer.makeBuffer() { return buffer }
-        try await Task.sleep(for: .milliseconds(1))
-    }
-    throw WaitError.timedOut("pool buffer")
-}
-
-private func waitUntilReady(_ writer: VideoWriter) async throws {
-    let deadline = ContinuousClock.now + .seconds(5)
-    while !writer.isReady {
-        guard ContinuousClock.now < deadline else { throw WaitError.timedOut("encoder input") }
-        try await Task.sleep(for: .milliseconds(1))
-    }
-}
-
-private enum WaitError: Error {
-    case timedOut(String)
-}
