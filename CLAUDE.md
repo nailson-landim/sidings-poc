@@ -4,11 +4,14 @@ Proofs of concept for the Siding Scanner. `README.md` has the repo map; `CONSOLI
 
 ## Orientation
 
+- **`HANDOFF.md`** is where to start when resuming Plane Lab work: current task state, what's waiting on the user, next steps, hard-won facts and the working agreements. Keep it current when a task or checkpoint closes.
 - **`CONSOLIDATION.md`** is the source of truth for decisions (D1–D7) and open questions. Don't contradict a decided item without flagging it. Add new native-ARKit findings to §10b.
 - **`REQUEST.md`** holds the current request. Earlier requests (Original Request, Request 2) are archived in `docs/REQUEST_1.md`; they're history, so don't rework them unless asked.
-- **`SPEC.md`** is the single file for the **Plane Lab** (SidingsAR recorder + Python core + Blender extension): spec, then plan (§17) and tasks (§18). For this work it replaces `tasks/plan.md` and `tasks/todo.md`. Don't write code for it until the spec phase is approved.
+- **`SPEC.md`** is the single file for the **Plane Lab** (SidingsAR recorder + Python core + Blender extension): spec, then plan (§17) and tasks (§18). For this work it replaces `tasks/plan.md` and `tasks/todo.md`. The spec and plan were approved on 2026-09-28 and are being built task by task. Tick §18 boxes as checks pass, and record minor decisions as P-rows in §17.4.
 - **`ARFeaturePointFindSurface/`** is an upstream clone of CurvSurf's feature-point app, used as a reference. It has its own nested `.git`; see its `CLAUDE.md` for local patches and findings.
-- **`ARKit_WallDetection/`** holds the only code so far: the SidingsAR iOS app plus the `PlaneKit` Swift package. Its own `CLAUDE.md` has the build and test commands, architecture invariants and memory rules. Follow it for any app change.
+- **`ARKit_WallDetection/`** holds the SidingsAR iOS app plus the `PlaneKit` Swift package, which includes the Plane Lab recorder core. Its own `CLAUDE.md` has the build and test commands, architecture invariants and memory rules. Follow it for any app change.
+- **`session-format/`** is the recording format's contract: the canonical DDL and a Swift-written fixture that both sides test against (see its README).
+- **`PlaneLab/`** is the Python side of Plane Lab (reader and CLI so far; later the pipeline and the Blender extension). It has its own `.venv`; see its README.
 - `AR_APP.PNG` is the baseline screenshot. `BUILDING_SAMPLE.png` is the outdoor feature-point example the Plane Lab should reproduce (`SPEC.md` §1, *Reference assets*). `ARKit_WallDetection/legacy/` is the 2018 tutorial, kept for reference only.
 
 ## Workflow expectations

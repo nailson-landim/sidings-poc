@@ -1,0 +1,122 @@
+# HANDOFF: Plane Lab build
+
+*Last updated 2026-09-28 at `e90e034`. Read this first when resuming; `SPEC.md` has the full detail.*
+
+## Resume prompt
+
+Paste this into a new session:
+
+> Resume the Plane Lab build from `HANDOFF.md`. Read it, then `SPEC.md` §0, §15, §17 and §18 (tick state), and continue with the first open item under *Next steps*. Keep the working agreements in HANDOFF.md.
+
+## Where things stand
+
+`SPEC.md` is the single source for this work: spec §0–16, plan §17, tasks §18 with checkboxes. The spec and the plan were approved on 2026-09-28, and every §16 question is closed.
+
+| Task | Status | Commit |
+|---|---|---|
+| T1 Video writer (PlaneKit) | Done | `3f55bae` |
+| T2 Spike R2: Blender video alignment | Done. **User scrub check still open** (doesn't block anything) | `8321164` |
+| T3 Spike R1: iPhone 13 load | Done, closed by the user | `003c4a4`, `f6ad4e6`, `14cba09` |
+| Checkpoint 0 | Passed | `14cba09` |
+| T4 Schema v1, records, packing, contract fixture | Done | `899292c` |
+| T5 Session writer | Done | `8686b42` |
+| T6 Python package, reader, `planelab info` | Done | `08f55cb` |
+| T7 Record/Stop in SidingsAR | **Code done; waiting for the user's 1-minute device run** | `e90e034` |
+| T8–T26 | Not started | — |
+
+The checks were green at `e90e034`:
+- `swift test`: 68 tests in 10 suites.
+- The iOS `xcodebuild` compile check: no new warnings. The AppIntents metadata notice is Xcode's own and pre-existing.
+- `pytest`: 29 tests, 98 % coverage.
+- `ruff`: clean.
+
+## Waiting on the user
+
+1. **T7 device run.** The user installs from Xcode, taps **Record**, walks for about 1 minute and taps **Stop**. Then:
+   - Pull the session (see *Commands*) into `~/PlaneLab/sessions/`.
+   - Run `python -m planelab info <bundle>`.
+   - Tick T7 if ≥ 99 % of frames were logged, and record the image drop rate and delivered fps.
+   - Expect about 30 fps delivered (R1).
+2. **T2 scrub check.** The user opens `~/PlaneLab/spikes/r2/r2_scrub.blend`, presses Numpad 0 to look through the camera, and scrubs and plays. They say whether it feels responsive.
+
+## Next steps for Claude
+
+In order:
+1. **Finish T7** once the user's session arrives (above).
+2. **T8: Blender extension and import (camera and raw points).**
+   - Build the P6 layout: `PlaneLab/blender/planelab_blender/`, with `vendor/planelab` as a symlink to `src/planelab`.
+   - Write `scripts/build_extension.sh`, which copies the real core into a staging folder and builds the zip.
+   - Set up the local-repository dev loop.
+   - Import: the scene fps is the **delivered** rate, `session.delivered_fps()`, not `video_fps` (§3.4). Convert ARKit to Blender axes as `(x, −z, y)`. Set lens, shift and resolution from the intrinsics. The raw-points layer comes from a frame-change handler. `event` rows become markers.
+   - Headless smoke test on `session-format/fixtures/v1/tiny.planelab`.
+3. **T9: video behind the camera.** The clip starts at timeline frame `1 + session.first_image_idx()`. Blender drops a leading gap and keeps later ones (§15 R2). The user then checks S11 on the T7 recording: the points sit on the image.
+4. **Checkpoint 1:** the user reviews. Then comes Phase 2, with two parallel tracks:
+   - **2A**, recorder, T10–T13: stop reasons and events, ARKit anchors, permissions and location, the Sessions sheet.
+   - **2B**, lab core, T14–T20: synth, config, gate and accumulator, RANSAC, search, tracker, pipeline.
+
+## Facts learned the hard way
+
+Each one is also recorded where it belongs.
+
+- **ARKit on the iPhone 13 delivered a flat 30 Hz against a promised 60**, with thermal already *serious* while charging. `video_fps` is only a frame counter (PTS = `idx / 60`), and Blender's playback rate comes from `frame.t`. Re-check 60 Hz, heat and memory at Checkpoint 2A with an unplugged, cool phone and a 1-minute no-Rec baseline. (§3.4, §15 R1)
+- **Blender drops a leading gap in the video but keeps later ones.** Place the clip at the first image. Random access costs about 50 ms of decoding; no proxies are needed. (§15 R2, `PlaneLab/spikes/README.md`)
+- **Keyframes are capped at 30 encoded images, not 0.5 s of time.** Skipped images stretch the time between keyframes. (§3.4)
+- **AVAssetReaderTrackOutput** reports media time in passthrough (it ignores the leading empty edit). When decoding, it applies the edit and adds an extra blank frame. `VideoProbe` handles both. (`ARKit_WallDetection/CLAUDE.md`)
+- **SQLite:** `SessionDatabase.seal()` closes the database and deletes the stray `-shm` file, so a sealed session is one file. Empty BLOBs are bound with `sqlite3_bind_zeroblob`, never a nil pointer.
+- **Xcode's generated Info.plist silently drops `UIFileSharingEnabled`.** It lives in `ARKit_WallDetection/SidingsAR-Info.plist`.
+- **Finder's Files tab can't open an app's folders.** Pull files with `devicectl` instead (below).
+- **Blender headless:** renders only follow `frame_set` on the *context* scene.
+- **This Mac's locale uses a decimal comma.** Run `awk` over `ffprobe` output with `LC_ALL=C`.
+
+## Working agreements (from the user)
+
+- **Commits:** one per task once its checks are green, with the attribution trailer. Don't ask each time (P14). Never push, and never commit recordings. `*.planelab` is ignored except the contract fixture.
+- **Decisions:** minor ones are Claude's to make, logged in `SPEC.md` §17.4 (P-rows) with a date and reason. Use AskUserQuestion for product, scope, device and field calls. The user asks for AskUserQuestion in every session.
+- **Devices:** ask before installing. The user installs from Xcode. Reading files with `devicectl` is fine. Never report device results that weren't observed.
+- **Spec reviews:** the user annotates `SPEC.md` inline (`USER_ANSWER`, `USER_QUESTION`, `Answer:`, `LAST QUESTION`). Answer each one, then fold it into the spec and remove the markers.
+- **Docs change with the code:** the README of the part touched, the relevant `CLAUDE.md`, `SPEC.md` ticks and results, and `CONSOLIDATION.md` §10b for ARKit findings.
+- **Notion:** offer to save findings to *LLM Session Memories* and save only on a yes. This session's page is "Plane Lab: spec approved, 26-task plan, and T1 …".
+- **Global rules** (`~/.claude/CLAUDE.md`):
+  - Python: a `.venv`, pinned requirements, ruff, strict type hints, frozen slotted dataclasses, `logging` with a silent log file.
+  - Tests stay on disk.
+
+## Commands
+
+```bash
+# Swift
+cd ARKit_WallDetection/PlaneKit && swift test
+xcodebuild -project ARKit_WallDetection/SidingsAR.xcodeproj -scheme SidingsAR \
+  -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
+
+# Python
+cd PlaneLab && source .venv/bin/activate
+ruff check . && ruff format --check . && pytest --cov=planelab --cov-fail-under=85
+python -m planelab info <bundle>
+
+# Pull files from the iPhone 13 (UDID 782F0FCC-0A00-5F6F-82AE-AC575194E5CA). A 13 Pro is also paired: `xcrun devicectl list devices`.
+xcrun devicectl device info files --device <udid> --domain-type appDataContainer \
+  --domain-identifier br.com.neuralnexgen.sidingsar --subdirectory Documents
+xcrun devicectl device copy from --device <udid> --domain-type appDataContainer \
+  --domain-identifier br.com.neuralnexgen.sidingsar --source Documents/Sessions/<name>.planelab \
+  --destination ~/PlaneLab/sessions/<name>.planelab
+
+# Regenerate the contract fixture (only after a deliberate format change + schema_version bump)
+cd ARKit_WallDetection/PlaneKit && PLANELAB_WRITE_FIXTURES=1 swift test --filter writeFixtures
+
+# R2 spike
+/Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup --python-exit-code 1 \
+  --python PlaneLab/spikes/r2_video_alignment.py -- ~/PlaneLab/spikes/r2/spike.mov ~/PlaneLab/spikes/r2/spike_frames.json
+```
+
+Blender 5.0.1's `sys.executable` is `/Applications/Blender.app/Contents/Resources/5.0/python/bin/python3.11`. It runs the core standalone (numpy 1.26.4, `tomllib`).
+
+## Outside the repo
+
+| Path | What |
+|---|---|
+| `~/PlaneLab/spikes/r1/` | Both R1 runs from the iPhone 13 (`.mov` + `.json` with timelines) |
+| `~/PlaneLab/spikes/r2/` | The R2 spike video, manifest, report and `r2_scrub.blend` |
+| `~/PlaneLab/sessions/` | Where real recordings go on the Mac (empty so far) |
+| `~/PlaneLab/logs/planelab.log` | Python log |
+| `~/.claude/projects/-Volumes-512G-Developer-beam-sidings-poc/memory/` | Claude memories: working preferences |
+| `ARKit_WallDetection/tasks/` | Earlier SidingsAR plan, with 48 unticked items from other work. Not touched by Plane Lab (P1) |
