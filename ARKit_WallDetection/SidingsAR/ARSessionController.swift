@@ -48,6 +48,8 @@ final class ARSessionController: NSObject {
     static let memoryInterval: TimeInterval = 1.0
 
     @ObservationIgnored let arView: ARView
+    /// Spike R1 (`../SPEC.md` §18 T3); replaced by the real recorder in T7.
+    @ObservationIgnored let video = VideoCapture()
     @ObservationIgnored private let renderer: PlaneRenderer
     @ObservationIgnored private let tracker = PlaneTracker()
     @ObservationIgnored private var anchors: [UUID: ARPlaneAnchor] = [:]
@@ -91,11 +93,21 @@ final class ARSessionController: NSObject {
     }
 
     func pause() {
+        video.stop(memoryMB: memoryMB)
         arView.session.pause()
+    }
+
+    func setVideoSpike(_ on: Bool) {
+        if on {
+            video.start(memoryMB: memoryMB)
+        } else {
+            video.stop(memoryMB: memoryMB)
+        }
     }
 
     /// Drops every anchor and tracker state and restarts tracking from scratch.
     func restart() {
+        video.stop(memoryMB: memoryMB)
         renderer.removeAll()
         tracker.reset()
         anchors.removeAll()
@@ -207,6 +219,7 @@ extension ARSessionController: @preconcurrency ARSessionDelegate {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         let now = frame.timestamp
         lastFrameTime = now
+        video.capture(frame)
         if (needsResolve || !dirty.isEmpty) && resolveThrottle.fire(now: now) {
             resolveAndRender(now: now)
         }
@@ -226,6 +239,7 @@ extension ARSessionController: @preconcurrency ARSessionDelegate {
     }
 
     func sessionWasInterrupted(_ session: ARSession) {
+        video.stop(memoryMB: memoryMB)
         interruptionBanner = "Session interrupted — camera unavailable"
         banner = interruptionBanner
         logger.warning("Session interrupted")
@@ -243,6 +257,7 @@ extension ARSessionController: @preconcurrency ARSessionDelegate {
 
     func session(_ session: ARSession, didFailWithError error: Error) {
         logger.error("Session failed: \(error.localizedDescription, privacy: .public)")
+        video.stop(memoryMB: memoryMB)
         errorMessage = error.localizedDescription
     }
 }

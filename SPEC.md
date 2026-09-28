@@ -726,7 +726,7 @@ A headless Blender script loads the T1 spike video as a movie clip. For at least
 
 Minimal glue behind a temporary HUD toggle, *Rec video*. Inside the frame delegate, each `ARFrame`'s `capturedImage` is copied into the writer's pool, then appended on the writer queue. The frame is never retained. The HUD shows images written and dropped, the copy time p95 and the thermal state, and the same numbers go to `r1-summary.json` next to the video in `Documents/Spikes/`. Adds the file-sharing Info.plist keys (§4 R8) so the files show up in Finder.
 
-- [ ] The compile check has no new warnings; `swift test` is green.
+- [x] The compile check has no new warnings; `swift test` is green.
 - [ ] **Device:** 5 minutes on the iPhone 13 at the default format. `r1-summary.json` gives the dropped %, copy p95 and highest thermal state. The user reports whether the plane viewer stutters, and *mem MB* at the start and end.
 - [ ] The decision is logged in §15 R1: keep 60 fps images, or take the P5 fallback. `RecorderConstants` is updated to match.
 - **Verify:** compile check; the device run (ask before installing).

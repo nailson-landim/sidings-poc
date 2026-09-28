@@ -5,6 +5,9 @@ struct HUDView: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            if controller.video.isRecording {
+                videoSpikeStats
+            }
             HStack {
                 stat("planes", "\(controller.keptCount)/\(controller.rawCount)")
                 stat("points", "\(controller.featurePointCount)")
@@ -22,6 +25,10 @@ struct HUDView: View {
                     Toggle("Anchor markers", isOn: $controller.showMarkers)
                     Toggle("Hide duplicates", isOn: $controller.hideSuppressed)
                     Toggle("Render statistics", isOn: $controller.showStatistics)
+                    Toggle("Rec video (R1 spike)", isOn: Binding(
+                        get: { controller.video.isRecording },
+                        set: { controller.setVideoSpike($0) }
+                    ))
                 } label: {
                     Label("Debug", systemImage: "ladybug")
                         .frame(maxWidth: .infinity)
@@ -36,6 +43,19 @@ struct HUDView: View {
         .background(.ultraThinMaterial, in: .rect(cornerRadius: 12))
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
+    }
+
+    /// Spike R1 readout (`../SPEC.md` §18 T3).
+    private var videoSpikeStats: some View {
+        let video = controller.video
+        return HStack {
+            stat("REC s", String(format: "%.0f", video.elapsed))
+            stat("written", "\(video.written)")
+            stat("dropped", "\(video.dropped)")
+            stat("copy p95", String(format: "%.1f ms", video.copyP95Ms))
+            stat("thermal", "\(video.thermal.rawValue)")
+        }
+        .foregroundStyle(.red)
     }
 
     private func stat(_ title: String, _ value: String) -> some View {

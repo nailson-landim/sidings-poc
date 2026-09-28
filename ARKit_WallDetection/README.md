@@ -110,6 +110,7 @@ The gap between the origin and the center shows that ARKit anchors a plane where
   - Anchor markers
   - Hide duplicates
   - RealityKit render statistics
+  - **Rec video (R1 spike)**: temporary, for Plane Lab task T3 (`../SPEC.md` §18). It copies every camera image into a 4-buffer pool and encodes HEVC at 60 fps while the viewer runs. A red row shows seconds, images written and dropped, copy time p95 and thermal state (0–3). Output goes to `Documents/Spikes/r1-<stamp>.mov`, plus a `.json` with the numbers, and it's visible in Finder and the Files app. Reset, pause, an interruption or a session error stop it. T7 replaces it with the real Record button.
 - **Reset:** clears all anchors and tracker state, and restarts tracking.
 
 ### Banners and overlays

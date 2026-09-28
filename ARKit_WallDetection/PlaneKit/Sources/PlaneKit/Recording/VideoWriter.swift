@@ -24,6 +24,16 @@ public enum VideoAppendResult: Equatable, Sendable {
     case skipped(VideoSkipReason)
 }
 
+/// Carries a pixel buffer across one queue hop. `CVPixelBuffer` isn't `Sendable`; the recorder hands each pool buffer
+/// to exactly one queue and never touches it again (SPEC §17.5).
+public struct PixelBufferBox: @unchecked Sendable {
+    public let buffer: CVPixelBuffer
+
+    public init(_ buffer: CVPixelBuffer) {
+        self.buffer = buffer
+    }
+}
+
 /// HEVC `video.mov` for a recording (SPEC §3.4). Log frame `idx` has presentation time `idx / fps`, so frames without
 /// an image leave gaps and video time always maps back to `idx`. The file is a fragmented movie, so a killed recording
 /// still plays up to its last fragment.
@@ -35,7 +45,8 @@ public enum VideoAppendResult: Equatable, Sendable {
 /// Images go through the writer's own pixel pool, capped at `pixelPoolSize` buffers. The cap is the back-pressure:
 /// when the encoder falls behind, `makeBuffer()` returns nil and the caller skips that image instead of waiting.
 ///
-/// Not thread-safe: use one instance from one queue.
+/// Not thread-safe: use one instance from one queue. The exception is `makeBuffer()`, which only touches the pixel
+/// pool, so the capture thread can copy an image while the writer queue appends the previous one.
 public final class VideoWriter {
     public let url: URL
     public let width: Int
@@ -45,6 +56,7 @@ public final class VideoWriter {
     private let writer: AVAssetWriter
     private let input: AVAssetWriterInput
     private let adaptor: AVAssetWriterInputPixelBufferAdaptor
+    private let pool: CVPixelBufferPool
     private let poolThreshold: Int
     private var lastIndex = -1
 
@@ -100,15 +112,15 @@ public final class VideoWriter {
             throw VideoWriterError.cannotStart(writer.error?.localizedDescription ?? "startWriting failed")
         }
         writer.startSession(atSourceTime: .zero)
-        guard adaptor.pixelBufferPool != nil else { throw VideoWriterError.cannotStart("no pixel buffer pool") }
+        guard let pool = adaptor.pixelBufferPool else { throw VideoWriterError.cannotStart("no pixel buffer pool") }
+        self.pool = pool
     }
 
     /// Whether the encoder input can take another image now.
     public var isReady: Bool { input.isReadyForMoreMediaData }
 
-    /// A buffer from the writer's pool, or nil when `pixelPoolSize` buffers are already in use.
+    /// A buffer from the writer's pool, or nil when `pixelPoolSize` buffers are already in use. Safe from any thread.
     public func makeBuffer() -> CVPixelBuffer? {
-        guard let pool = adaptor.pixelBufferPool else { return nil }
         var buffer: CVPixelBuffer?
         let aux = [kCVPixelBufferPoolAllocationThresholdKey as String: poolThreshold] as CFDictionary
         let status = CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(kCFAllocatorDefault, pool, aux, &buffer)
