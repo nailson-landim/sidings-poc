@@ -229,21 +229,24 @@ ARKit_WallDetection/
 │   ├── LabelOverlay.swift       Screen-space UIKit labels
 │   ├── PlaneStyle.swift         Colors, opacities, label text
 │   └── MemoryFootprint.swift    phys_footprint for the HUD
-├── PlaneKit/                    Pure Swift package (simd + Foundation only)
+├── PlaneKit/                    Swift package with no ARKit or RealityKit; tested on the Mac
 │   ├── Sources/PlaneKit/
 │   │   ├── PlaneObservation.swift  ARKit-free plane snapshot; world normal/center/boundary/area
 │   │   ├── PolygonMath.swift       Area, convex hull, Sutherland–Hodgman clipping, projection
 │   │   ├── PlaneTracker.swift      NMS + hysteresis + PlaneTrackerConfig
 │   │   ├── Smoothing.swift         PlaneSmoother (EMA with jump reset)
-│   │   └── RenderBudget.swift      Throttle, RebuildGate, PointMarkerMesh
-│   └── Tests/PlaneKitTests/        Swift Testing suites + fixtures
+│   │   ├── RenderBudget.swift      Throttle, RebuildGate, PointMarkerMesh
+│   │   └── Recording/              Plane Lab recorder (../SPEC.md §4), being built
+│   │       ├── Constants.swift     RecorderConstants: every recorder setting, written to each session's meta
+│   │       └── VideoWriter.swift   HEVC video.mov: time = frame index / fps, gaps, fragments, capped pixel pool
+│   └── Tests/PlaneKitTests/        Swift Testing suites + fixtures (Recording/ has its own helpers)
 ├── legacy/                      The original 2018 SceneKit tutorial (reference only, not maintained)
 └── tasks/                       plan.md (design) and todo.md (task and checkpoint status)
 ```
 
 ## Testing
 
-`cd PlaneKit && swift test` runs 36 Swift Testing cases in 4 suites:
+`cd PlaneKit && swift test` runs 46 Swift Testing cases in 6 suites:
 
 | Suite | Covers |
 |---|---|
@@ -251,6 +254,8 @@ ARKit_WallDetection/
 | Non-Maximum Suppression | Coplanar duplicates, perpendicular walls, parallel walls 30 cm apart, disjoint coplanar walls, floor vs. table, horizontal vs. vertical, chains of duplicates, removal, a 50-plane timing bound |
 | Smoothing & hysteresis | EMA convergence and jump reset, winner stable under ±5% jitter, challenger takeover after the streak, a weak challenger never winning |
 | Render budget | Throttle, RebuildGate (first build, unchanged geometry, deferred change, area delta), octahedra counts, index range and outward winding, subsampling |
+| Recorder constants | Every `RecorderConstants` property becomes one `const.*` meta row |
+| Video writer | HEVC timestamps with gaps (including a leading gap), keyframe spacing, frame numbers surviving encoding, a full pool skipping instead of blocking, out-of-order frames, plane-by-plane copy, and a half-written movie readable up to its last fragment. `PLANELAB_SPIKE_OUT=<dir> swift test --filter spikeVideo` writes the 1920 × 1440 spike video for Plane Lab T2 |
 
 Anything that can be expressed without ARKit or RealityKit goes into `PlaneKit`, with tests. The app target has no unit tests; its behavior is checked on device against the checkpoints in `tasks/todo.md`.
 

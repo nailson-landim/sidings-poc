@@ -15,7 +15,7 @@ xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR \
 
 ## Where code goes
 
-- **`PlaneKit/`**: anything expressible without ARKit or RealityKit (geometry, arbitration, smoothing, throttling, mesh-data generation). It imports only `simd` and Foundation. Every change here gets Swift Testing cases in `PlaneKit/Tests/PlaneKitTests/`. Tests stay on disk.
+- **`PlaneKit/`**: anything expressible without ARKit or RealityKit (geometry, arbitration, smoothing, throttling, mesh-data generation, and the Plane Lab recorder in `Recording/`). The plane code imports only `simd` and Foundation. `Recording/` may also import AVFoundation, CoreVideo and SQLite3, which all exist on macOS, so the whole write path is tested with `swift test` (`../SPEC.md` L11). Never ARKit, RealityKit or UIKit. Every change here gets Swift Testing cases in `PlaneKit/Tests/PlaneKitTests/`. Tests stay on disk.
 - **`SidingsAR/`**: ARKit/RealityKit/UIKit glue. `PlaneAnchorAdapter` is the only place that converts ARKit types into PlaneKit types.
 - **`legacy/`**: read-only reference. Don't modify or build it.
 
@@ -43,6 +43,8 @@ xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR \
 - The project uses a **synchronized folder** group (`PBXFileSystemSynchronizedRootGroup`). New files in `SidingsAR/` are picked up automatically, so don't hand-edit `project.pbxproj` to add files. Xcode may rewrite quoting in the file; that's harmless.
 - Swift Testing: `#expect(x.mutatingCall())` doesn't compile. Bind to a `let` first.
 - Floating-point boundaries: `10.1 - 10.0 < 0.1`. Don't put test timestamps exactly on a throttle boundary.
+- Video tests: `AVAssetReaderTrackOutput` reports **media** time and ignores the empty edit that `AVAssetWriter` writes for a leading gap. Map timestamps through `track.segments` (`VideoProbe.movieTime`) before comparing them with frame indices.
+- Shell checks of `ffprobe` output: this Mac's locale uses a decimal comma, so run `awk` with `LC_ALL=C`, or `0.05` parses as `0`.
 - Logging goes through `os.Logger` with subsystem `br.com.neuralnexgen.sidingsar`. No `print`.
 - RealityKit API facts used here: `MeshResource.Contents` → `Model(id:parts:)` → `Part(id:materialIndex:)` with `positions` and `triangleIndices`, and `Instance(id:model:)`. `ARView.project(_:)` returns `CGPoint?`. `BillboardComponent` is available but no longer used.
 

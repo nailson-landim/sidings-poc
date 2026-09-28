@@ -1,6 +1,6 @@
 # SPEC: Plane Lab (record on the phone, replay and fit on the Mac)
 
-*Status: **spec approved** (user, 2026-09-28: "Everything seems fine"). **Plan (§17) and tasks (§18) drafted 2026-09-28, waiting for review.** Created 2026-09-25 from `REQUEST.md`; review answers folded in 2026-09-28 (L5–L11). Context: `CONSOLIDATION.md` (D1–D3, §4, §8, §10b).*
+*Status: **spec approved** (user, 2026-09-28: "Everything seems fine"). **Plan (§17) and tasks (§18) approved 2026-09-28; building from T1.** Created 2026-09-25 from `REQUEST.md`; review answers folded in 2026-09-28 (L5–L11). Context: `CONSOLIDATION.md` (D1–D3, §4, §8, §10b).*
 
 This one file holds the spec for the Plane Lab and, once the spec is approved, its plan (§17) and tasks (§18). For this work, `ARKit_WallDetection/tasks/plan.md` and `tasks/todo.md` aren't used.
 
@@ -213,7 +213,8 @@ In Blender these become timeline markers.
 
 - `video.mov`: HEVC, at the captured-image resolution (typically 1920 × 1440), in landscape sensor orientation, with no rotation metadata.
 - The video frame for log frame `idx` has presentation time `idx / video_fps`. A frame without an image leaves a gap in the timestamps and has `has_image = 0`, so video time always maps back to `idx`.
-- A keyframe at least every 0.5 s, so seeking in Blender stays fast.
+- A keyframe at least every 0.5 s of images (30 at 60 fps), so reaching any frame decodes at most 30 images and seeking in Blender stays fast. The encoder counts images, not time, so skipped images stretch the gap in time (T1: 0.67 s around a 10-frame hole).
+- When the first image isn't log frame 0, `AVAssetWriter` keeps the gap as an empty edit at the start of the track. FFmpeg applies it (the stream's `start_time` is the gap), but `AVAssetReaderTrackOutput` reports media time without it (T1, 2026-09-28). T2 checks what Blender does with it.
 - Written as a fragmented movie (`movieFragmentInterval` ≈ 1 s), so a killed recording still plays up to its last fragment.
 
 ### 3.5 Versioning
@@ -594,7 +595,7 @@ All closed. The user accepted every remaining default on 2026-09-28 ("Everything
 
 ## 17. Plan
 
-*Drafted 2026-09-28 after the spec was approved. Waiting for review.*
+*Drafted 2026-09-28 after the spec was approved. Approved by the user the same day.*
 
 ### 17.1 Approach
 
@@ -659,6 +660,7 @@ Minor decisions made while planning, under the user's "minor decisions I trust y
 | P11 | Every device check asks before installing (§12). An iPhone 13 and a 13 Pro are paired with this Mac as of 2026-09-28. | CLAUDE.md |
 | P12 | The results store keeps a full snapshot of the averaged cloud every 60 fits, with changes in between (R3). T20 measures this against S12 and adjusts it. | Starting point for R3 |
 | P13 | ARKit → record conversions for the recorder live in one file, `SidingsAR/Recording/ARRecordAdapter.swift`. The SidingsAR rule "`PlaneAnchorAdapter` is the only place that converts ARKit types" becomes "`PlaneAnchorAdapter` (viewer) and `ARRecordAdapter` (recorder)". | Keeps the rule's intent: one place per consumer |
+| P14 | **Commits** (user, 2026-09-28): one commit per task once its checks are green, with the attribution trailer, without asking each time. Never push, never commit recordings. | User's choice |
 
 ### 17.5 Risks found while planning
 
@@ -682,7 +684,7 @@ A task is done when its own checks in §18 pass, and:
 - New behavior has tests that fail without the change. Tests stay on disk.
 - Docs change with the code: the README of the part touched, a `CLAUDE.md` when a rule changes, and this spec when a decision changes.
 - Device and user checks stay unticked until the user reports them. Device results that weren't observed are never reported.
-- Commits follow the rule the user sets for this plan.
+- It's committed on its own once green (P14).
 
 ## 18. Tasks
 
@@ -694,11 +696,16 @@ Tick a box only when its check has passed. Boxes marked **Device** or **User** a
 
 `RecorderConstants` (`Constants.swift`) and a `VideoWriter` around `AVAssetWriter`: HEVC at the capture size, presentation time `idx / fps`, gaps for skipped images, a keyframe at least every `keyframeIntervalS`, a fragmented movie, and the adaptor's pool capped at `pixelPoolSize` (P5). Both spikes need it, so it comes first. `PLANELAB_SPIKE_OUT=<dir> swift test --filter spikeVideo` writes a 10 s, 1920 × 1440 video with gaps and frame-number blocks (P4) for T2. The PlaneKit import rule in `ARKit_WallDetection/CLAUDE.md` is updated here, since this is where the rule stops being true.
 
-- [ ] 120 synthetic frames with 10 skipped read back (`AVAssetReader`) as HEVC with exactly the expected presentation times.
-- [ ] With the pool full, `append` returns *skipped* at once instead of blocking.
-- [ ] A copy of the file taken mid-write, after at least two fragments, opens and holds the frames up to its last fragment.
-- [ ] `metaRows` lists every `RecorderConstants` property.
+- [x] 120 synthetic frames with 10 skipped read back (`AVAssetReader`) as HEVC with exactly the expected presentation times.
+- [x] With the pool full, `append` returns *skipped* at once instead of blocking.
+- [x] A copy of the file taken mid-write, after at least two fragments, opens and holds the frames up to its last fragment.
+- [x] `metaRows` lists every `RecorderConstants` property.
 - **Verify:** `swift test`; `ffprobe` on the spike video shows `hevc` and keyframes ≤ 0.5 s apart.
+- **Result (2026-09-28):** done. 46 tests pass, and the compile check is clean. `ffprobe` on the spike video: `hevc`, 1920 × 1440, 571 of 600 frames, `start_time` 0.05 s (the 3-frame leading gap is kept). Two findings, now in §3.4:
+  - Keyframes are at most 30 *encoded images* apart; time gaps reach 0.67 s around skipped images.
+  - A leading gap is stored as an empty edit, which FFmpeg applies and `AVAssetReaderTrackOutput` doesn't.
+
+  The spike output is in `~/PlaneLab/spikes/r2/` (`spike.mov`, `spike_frames.json`).
 - **Depends on:** nothing.
 - **Files:** `PlaneKit/Sources/PlaneKit/Recording/Constants.swift`, `.../Recording/VideoWriter.swift`, `PlaneKit/Tests/PlaneKitTests/Recording/VideoWriterTests.swift`, `.../Recording/TestFrames.swift`, `ARKit_WallDetection/CLAUDE.md`
 

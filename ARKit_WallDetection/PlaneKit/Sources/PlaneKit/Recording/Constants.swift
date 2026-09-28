@@ -1,0 +1,34 @@
+import Foundation
+
+/// Every recorder setting in one place (SPEC L8, §4 R14). Edit and rebuild; each recording stores them in `meta`
+/// as `const.<name>`. Tests build a modified copy instead of changing this file.
+public struct RecorderConstants: Sendable, Equatable {
+    /// Video frame rate. A log frame's image has presentation time `idx / videoFPS`.
+    public var videoFPS = 60
+    public var videoBitrate = 8_000_000
+    /// Longest gap between keyframes, so seeking in Blender stays fast.
+    public var keyframeIntervalS = 0.5
+    /// Movie fragment length: a killed recording still plays up to its last fragment.
+    public var fragmentIntervalS = 1.0
+    /// Pixel buffers the recorder may hold (copies waiting for, or inside, the encoder). When all are in use the
+    /// frame's image is skipped (`has_image = 0`) and its metadata is still logged.
+    public var pixelPoolSize = 4
+    /// One SQLite transaction per this interval.
+    public var commitIntervalS = 0.5
+    /// Frames the write queue may hold before whole frames are dropped.
+    public var writeQueueFrames = 120
+    /// Recording stops by itself below this much free space.
+    public var lowDiskBytes: Int64 = 1_000_000_000
+    public var headingFilterDeg = 1.0
+
+    public init() {}
+
+    public static let current = RecorderConstants()
+
+    /// One `meta` row per stored property, read by reflection so a new constant can't be left out.
+    public var metaRows: [(key: String, value: String)] {
+        Mirror(reflecting: self).children.compactMap { child in
+            child.label.map { ("const.\($0)", "\(child.value)") }
+        }
+    }
+}
