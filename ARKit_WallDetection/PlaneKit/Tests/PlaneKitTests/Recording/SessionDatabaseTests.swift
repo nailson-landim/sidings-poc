@@ -51,6 +51,21 @@ struct SessionDatabaseTests {
         #expect(try scalar(url, "SELECT typeof(points) || typeof(point_ids) FROM frame") == "blobblob")
     }
 
+    /// SPEC §3.3 and T11: a remove carries only the anchor id, even when the caller passes a shape.
+    @Test func removeRowCarriesOnlyTheID() throws {
+        let folder = TempFolder()
+        let url = folder.file("session.sqlite")
+        let added = ContractFixture.records.anchors[0]
+        let removed = AnchorRecord(frameIndex: 9, anchorID: added.anchorID, event: .remove, geometry: added.geometry)
+        #expect(removed.geometry == nil)
+        let db = try SessionDatabase.create(at: url)
+        try db.insert(added)
+        try db.insert(removed)
+        #expect(try db.anchors() == [added, removed])
+        db.close()
+        #expect(try scalar(url, "SELECT typeof(transform) || typeof(boundary) || typeof(alignment) FROM plane_anchor WHERE event = 2") == "nullnullnull")
+    }
+
     @Test func mismatchedPointsAndIDsAreRefused() throws {
         let folder = TempFolder()
         let db = try SessionDatabase.create(at: folder.file("session.sqlite"))

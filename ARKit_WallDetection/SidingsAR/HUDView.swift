@@ -34,6 +34,11 @@ struct HUDView: View {
                 }
                 .buttonStyle(.bordered)
                 recordButton
+                if controller.recorder.isRecording {
+                    Button("Mark", systemImage: "flag.fill") { controller.recorder.mark() }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                }
                 Button("Reset", systemImage: "arrow.counterclockwise") { controller.restart() }
                     .buttonStyle(.borderedProminent)
             }
@@ -62,6 +67,7 @@ struct HUDView: View {
             stat("frames", "\(recorder.frames)")
             stat("dropped", "\(recorder.framesDropped)")
             stat("no image", "\(recorder.imagesDropped)")
+            stat("marks", "\(recorder.marks)")
             stat("MB", String(format: "%.0f", recorder.megabytes))
             stat("free GB", String(format: "%.1f", recorder.freeGB))
         }

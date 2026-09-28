@@ -26,6 +26,37 @@ enum ARRecordAdapter {
         )
     }
 
+    /// One `plane_anchor` row. A remove carries only the id (SPEC §3.3).
+    static func anchorRecord(_ anchor: ARPlaneAnchor, event: AnchorEvent, frameIndex: Int) -> AnchorRecord {
+        guard event != .remove else {
+            return AnchorRecord(frameIndex: frameIndex, anchorID: anchor.identifier, event: .remove, geometry: nil)
+        }
+        let extent = anchor.planeExtent
+        let geometry = AnchorGeometry(
+            alignment: anchor.alignment.rawValue,
+            classification: ARPlaneAnchor.isClassificationSupported ? classificationCode(anchor.classification) : 0,
+            transform: anchor.transform,
+            center: anchor.center,
+            extent: SIMD3(extent.width, extent.height, extent.rotationOnYAxis),
+            boundary: anchor.geometry.boundaryVertices
+        )
+        return AnchorRecord(frameIndex: frameIndex, anchorID: anchor.identifier, event: event, geometry: geometry)
+    }
+
+    /// `ARPlaneClassification` raw values: none 0, wall 1, floor 2, ceiling 3, table 4, seat 5, window 6, door 7.
+    static func classificationCode(_ classification: ARPlaneAnchor.Classification) -> Int {
+        switch classification {
+        case .wall: 1
+        case .floor: 2
+        case .ceiling: 3
+        case .table: 4
+        case .seat: 5
+        case .window: 6
+        case .door: 7
+        default: 0
+        }
+    }
+
     static func codes(_ state: ARCamera.TrackingState) -> (TrackingCode, TrackingReason) {
         switch state {
         case .notAvailable: (.notAvailable, .none)

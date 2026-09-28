@@ -23,6 +23,8 @@ final class SessionRecorder {
     private(set) var freeGB: Double = 0
     /// One line about the last finished recording, for the HUD.
     private(set) var lastResult: String?
+    /// Marks placed in the current recording.
+    private(set) var marks = 0
 
     @ObservationIgnored private var writer: SessionWriter?
     @ObservationIgnored private var firstTime: TimeInterval?
@@ -53,6 +55,7 @@ final class SessionRecorder {
         framesDropped = 0
         imagesDropped = 0
         megabytes = 0
+        marks = 0
         lastResult = nil
         statsThrottle.reset()
     }
@@ -71,12 +74,31 @@ final class SessionRecorder {
         let index = writer.enqueue(ARRecordAdapter.frameRecord(frame), image: image)
         if index == 0 {
             writer.enqueue(EventRecord(frameIndex: 0, kind: "record", detail: "start"))
+            // Planes ARKit found before Record was tapped get no didAdd while recording: log them as added at frame 0.
+            record(frame.anchors.compactMap { $0 as? ARPlaneAnchor }, event: .add)
         }
 
         if statsThrottle.fire(now: frame.timestamp) {
             refreshStats(now: frame.timestamp, writer: writer)
             if writer.hasFailed { stop(reason: "error") }
         }
+    }
+
+    /// ARKit plane callbacks (SPEC §4, T11). Callbacks only record: one queued row per plane, stamped with the last
+    /// logged frame.
+    func record(_ planes: [ARPlaneAnchor], event: AnchorEvent) {
+        guard isRecording, let writer, !planes.isEmpty else { return }
+        let frameIndex = max(writer.lastFrameIndex, 0)
+        for plane in planes {
+            writer.enqueue(ARRecordAdapter.anchorRecord(plane, event: event, frameIndex: frameIndex))
+        }
+    }
+
+    /// The Mark button: an `event` row to find a moment later, for example "wall A starts here" (SPEC §4 R11).
+    func mark() {
+        guard isRecording, let writer else { return }
+        marks += 1
+        writer.enqueue(EventRecord(frameIndex: max(writer.lastFrameIndex, 0), kind: "mark", detail: "mark \(marks)"))
     }
 
     /// Finishes the bundle in the background. `reason` goes to `meta.stop_reason` (SPEC §3.3).

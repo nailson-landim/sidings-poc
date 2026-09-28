@@ -197,12 +197,14 @@ extension ARSessionController: @preconcurrency ARSessionDelegate {
         guard !planes.isEmpty else { return }
         planes.forEach(renderer.add)
         ingest(planes, now: lastFrameTime)
+        recorder.record(planes, event: .add)
     }
 
     func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
         let planes = anchors.compactMap { $0 as? ARPlaneAnchor }
         guard !planes.isEmpty else { return }
         ingest(planes, now: lastFrameTime)
+        recorder.record(planes, event: .update)
     }
 
     /// ARKit reports plane merges here: the absorbed anchor is removed. Visuals go away immediately.
@@ -216,6 +218,7 @@ extension ARSessionController: @preconcurrency ARSessionDelegate {
             renderer.remove(id: plane.identifier)
         }
         needsResolve = true
+        recorder.record(planes, event: .remove)
     }
 
     /// Frame tick: throttled resolve/render, HUD and memory readout. Never retains the frame.
