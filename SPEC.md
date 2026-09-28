@@ -1,6 +1,6 @@
 # SPEC: Plane Lab (record on the phone, replay and fit on the Mac)
 
-*Status: **draft for review** (Phase 1, Specify). Created 2026-09-25 from `REQUEST.md`. Context: `CONSOLIDATION.md` (D1–D3, §4, §8, §10b).*
+*Status: **spec approved** (user, 2026-09-28: "Everything seems fine"). **Plan (§17) and tasks (§18) drafted 2026-09-28, waiting for review.** Created 2026-09-25 from `REQUEST.md`; review answers folded in 2026-09-28 (L5–L11). Context: `CONSOLIDATION.md` (D1–D3, §4, §8, §10b).*
 
 This one file holds the spec for the Plane Lab and, once the spec is approved, its plan (§17) and tasks (§18). For this work, `ARKit_WallDetection/tasks/plan.md` and `tasks/todo.md` aren't used.
 
@@ -14,8 +14,13 @@ This one file holds the spec for the Plane Lab and, once the spec is approved, i
 | L2 | **Images are recorded as HEVC video**, one video frame per logged frame. Pose, intrinsics and feature points are logged for every `ARFrame`. | Decided (user) |
 | L3 | **Recall is judged by eye in v1.** No ground truth and no metrics beyond per-frame counts. | Decided (user) |
 | L4 | **One file:** this `SPEC.md` holds the spec, the plan and the tasks. | Decided (user) |
-| L5 | A session is a **folder bundle**: `session.sqlite` (per-frame data) plus `video.mov`. | Proposed; review in §3 |
-| L6 | The Python core depends only on **numpy and the standard library**, so it loads inside Blender with no extra installs. | Proposed; review in §16 |
+| L5 | A session is a **folder bundle**: `session.sqlite` (per-frame data) plus `video.mov`. | Decided (user, 2026-09-28): "SQLite works everywhere" |
+| L6 | The Python core depends only on **numpy and the standard library**, so it loads inside Blender with no extra installs. Internal data and config use frozen dataclasses, not Pydantic. | Decided (user, 2026-09-28, §16 Q2) |
+| L7 | **Blender is the main interface.** Every CLI command also has a Blender operator. Recompute runs the CLI in a separate process with Blender's own Python (§6). The CLI stays for scripting. | Decided (user, 2026-09-28), including how Recompute runs |
+| L8 | **Settings live in one place and are saved with the data.** Recorder settings live in `Constants.swift` (edit, rebuild) and are written to `meta` in every session. Lab settings live in TOML and are written into each run's `results.sqlite`. | Decided (user, 2026-09-28) |
+| L9 | **First-launch permissions: Camera and Location.** GPS fixes and compass heading are logged in the session (§3.3, §4). | Decided (user, 2026-09-28) |
+| L10 | **E1 moves to a second site.** The `BUILDING_SAMPLE.png` building has no open ground for a 10–15 m standoff. | Decided (user, 2026-09-28) |
+| L11 | **All recorder logic goes into the `PlaneKit` target** (records, SQLite writer, video writer, constants). No separate `SessionLog` target. | Decided (user, 2026-09-28, §16 Q3) |
 
 ## 1. Objective
 
@@ -84,7 +89,7 @@ What it means for the lab:
 1. **Walls are seen through their outlines.** The fitter gets a wall's corners, trim and openings, not its face. Using the convex hull of the inliers as the extent (§5.1, stage 5) fits that.
 2. **Edge points are degenerate samples.** Points along one line (a vertical corner, the parapet) fit infinitely many planes. Every hypothesis needs a **non-collinearity check** on its inliers (§5.1).
 3. **Corners belong to two walls.** Sequential RANSAC normally removes a plane's inliers before searching again. Here that would take the shared corner away from the second wall, so points near an edge must stay available (§5.1).
-4. **It's the first session to record.** Record the same building with the SidingsAR recorder twice: from under 5 m to reproduce this result, and from 10–15 m for E1. Then compare in Blender how long ARKit and our pipeline each take to get the upper points and planes.
+4. **It's the first session to record.** Record this building with the SidingsAR recorder from under 5 m to reproduce this result, then compare in Blender how long ARKit and our pipeline each take to get the upper points and planes (E2). A 10–15 m standoff isn't possible here because there's no open ground in front of it (user, 2026-09-28). **E1 needs a second site:** a building with an open standoff such as a street or parking lot, recorded from 10–15 m and farther (L10).
 
 ## 2. Capability map
 
@@ -93,9 +98,9 @@ The request bundles four parts that can be tested separately. They stay in this 
 | Module id | Responsibility | Depends on |
 |---|---|---|
 | `session-format` | The on-disk contract between the phone and the Mac: bundle layout, tables, conventions, versioning (§3) | — |
-| `recorder` | Record/Stop in SidingsAR, live writing, finalizing, listing and sharing sessions (§4) | `session-format` |
+| `recorder` | First-launch permissions, Record/Stop in SidingsAR, live writing (frames, video, location), finalizing, listing and sharing sessions (§4) | `session-format` |
 | `lab-core` | Python: read sessions, accumulate points, fit planes, track planes, CLI, synthetic sessions (§5) | `session-format` |
-| `blender-addon` | A Blender 5 extension: import, timeline replay, layers, settings, Recompute (§6) | `lab-core` |
+| `blender-addon` | A Blender 5 extension and the main interface: every CLI command, import, timeline replay, layers, settings, Recompute (§6) | `lab-core` |
 
 **Build order:** first a risk spike (§15, R1 and R2), then `session-format`, then `recorder` and `lab-core` in parallel (the core starts on synthetic sessions), then `blender-addon`.
 
@@ -111,7 +116,7 @@ The request bundles four parts that can be tested separately. They stay in this 
     └── <run-name>/               one Recompute: config.toml + results.sqlite
 ```
 
-**Why SQLite.** It's a single file that's safe to append to while recording (WAL mode, committed in batches). A killed app loses at most the last uncommitted batch. It's built into iOS (`import SQLite3`) and into Blender's Python (`sqlite3`, SQLite 3.50.4 in Blender 5.0.1). Looking up a frame by index needs no parsing. Per-frame point arrays are stored as BLOBs, so there's **one row per frame**, not one row per point, and Python reads them with `numpy.frombuffer`.
+**Why SQLite** (decided, L5). It's a single file that's safe to append to while recording (WAL mode, committed in batches). A killed app loses at most the last uncommitted batch. It's built into iOS (`import SQLite3`) and into Blender's Python (`sqlite3`, SQLite 3.50.4 in Blender 5.0.1). Looking up a frame by index needs no parsing. Per-frame point arrays are stored as BLOBs, so there's **one row per frame**, not one row per point, and Python reads them with `numpy.frombuffer`.
 
 **Alternatives considered:**
 - **JSONL plus binary files:** easy to inspect, but more files and no transactions.
@@ -143,6 +148,8 @@ An export to other formats can come later.
 | `started_at`, `stopped_at` | ISO 8601 UTC |
 | `stop_reason` | `user` / `interruption` / `reset` / `mode_change` / `low_disk` / `error` |
 | `frames_logged`, `frames_with_image`, `frames_dropped` | counters written when the recording is finalized |
+| `location_auth`, `location_accuracy` | `when_in_use` / `denied` / `not_determined`; `full` / `reduced` (the user can grant approximate location only) |
+| `const.<name>` | One row per `RecorderConstants` property (§4 R14, §10), for example `const.commitIntervalS` = `0.5`. Written at Record, so a killed recording still has them. |
 
 **`frame`**, one row per logged `ARFrame`:
 
@@ -174,6 +181,26 @@ An export to other formats can come later.
 | `center`, `extent` | BLOB 12 B each | `center`; `planeExtent` (width, height, rotationOnYAxis) |
 | `boundary` | BLOB 12·M B | `geometry.boundaryVertices`, anchor-local |
 
+**`location`**, one row per Core Location fix (about 1 Hz; empty when location is denied):
+
+| Column | Type | Content |
+|---|---|---|
+| `frame_idx` | INTEGER | Last logged frame when the fix arrived, like `plane_anchor` |
+| `utc` | REAL | `CLLocation.timestamp`, seconds since 1970. For reference only; `frame_idx` is the join key. |
+| `lat`, `lon` | REAL | Degrees, WGS 84 |
+| `alt_m`, `ellipsoidal_alt_m` | REAL | `altitude` (above sea level), `ellipsoidalAltitude` |
+| `h_acc_m`, `v_acc_m` | REAL | `horizontalAccuracy`, `verticalAccuracy` |
+
+**`heading`**, one row per compass update (1° filter):
+
+| Column | Type | Content |
+|---|---|---|
+| `frame_idx` | INTEGER | Last logged frame when the update arrived |
+| `true_deg`, `magnetic_deg` | REAL | `CLHeading.trueHeading` (−1 when invalid), `magneticHeading` |
+| `acc_deg` | REAL | `headingAccuracy` |
+
+Location is **site metadata, not geometry**: it identifies the recording site and, with the camera yaw from the same frames, gives each facade's compass direction. Nothing in the pipeline uses it for poses.
+
 **`event`** (`frame_idx INTEGER, kind TEXT, detail TEXT`) logs:
 - tracking-state changes
 - interruptions and relocalization
@@ -191,7 +218,7 @@ In Blender these become timeline markers.
 
 ### 3.5 Versioning
 
-Any change to the tables or conventions bumps `schema_version`. Readers refuse versions they don't know, with a clear message. Contract fixtures in `session-format/fixtures/` are checked by both the Swift tests and the Python tests.
+Any change to the tables or conventions bumps `schema_version`. Readers refuse versions they don't know, with a clear message. Contract fixtures in `session-format/fixtures/` cover every table, including `location`, `heading` and the `const.*` rows, and are checked by both the Swift tests and the Python tests.
 
 ## 4. Recorder (`recorder`, in SidingsAR)
 
@@ -208,12 +235,16 @@ Any change to the tables or conventions bumps `schema_version`. Readers refuse v
 | R9 | Recording stops by itself when free space drops below 1 GB (`stop_reason = low_disk`). |
 | R10 | **Memory stays flat** while recording, because every buffer and queue is bounded. It's checked with the existing *mem MB* readout. |
 | R11 | *(Should)* A **Mark** button adds an `event` row. Use it to note things like "wall A starts here". |
+| R12 | **First launch: a permissions screen** (L9). It asks for **Camera**, then **Location While In Use**. Each has a row showing its status, and an **Open Settings** button appears when one is denied, because iOS shows each system prompt only once. The screen comes back at launch while anything is still undecided. |
+| R13 | **Nothing else is requested.** Files access needs no prompt (R8 is Info.plist keys only). The video has no audio track, sessions don't go to Photos, raw motion data is out of scope (§14), and there's no network. Recording works with Location denied: the tables stay empty and `meta` says so. |
+| R14 | **Constants** (L8). Every recorder setting (video fps, bitrate, keyframe and fragment intervals, commit interval, queue and pool sizes, low-disk threshold, location and heading filters) lives in `RecorderConstants` in `Constants.swift`. To change one, edit and rebuild. Every value is written to `meta` as `const.<name>` when Record is tapped. |
+| R15 | **Location logging.** While recording, `CLLocationManager` fixes (best accuracy, no distance filter) and heading updates (1° filter) go to `location` and `heading` through the same bounded writer queue. They start at Record and stop with it. |
 
-**Estimated size:** about 100 MB per minute (roughly 60 MB of video at 8 Mbps plus about 35 MB of feature points at 60 Hz). To be measured.
+**Estimated size:** about 100 MB per minute (roughly 60 MB of video at 8 Mbps plus about 35 MB of feature points at 60 Hz). Location adds a few KB. To be measured.
 
-**Where the code goes** (following `ARKit_WallDetection/CLAUDE.md`):
-- **In the PlaneKit package, a new library target `SessionLog`:** record types, BLOB packing, the schema, the SQLite writer and the drop policy. It imports Foundation, simd and the system `SQLite3` module, so it's tested with `swift test` on the Mac (see §16 Q3).
-- **In `SidingsAR/Recording/`:** the glue for ARKit, AVFoundation (`AVAssetWriter`) and the UI.
+**Where the code goes** (L11: "get everything into PlaneKit, it's a disposable POC"):
+- **In the `PlaneKit` target:** `RecorderConstants` (`Constants.swift`), record types (frame, anchor, location, heading), BLOB packing, the schema, the SQLite writer, the drop policy, and the **`AVAssetWriter` video writer**. AVFoundation and SQLite3 also exist on macOS, so `swift test` checks the whole write path on the Mac, including HEVC output with gaps and a file whose writer never finished (S3). This ends PlaneKit's "simd and Foundation only" rule; `ARKit_WallDetection/CLAUDE.md` gets updated when the code lands.
+- **In `SidingsAR/Recording/`, only what needs ARKit or UIKit:** `ARFrame` → `FrameRecord` and `ARPlaneAnchor` → anchor record mapping, the `CLLocationManager` delegate, the permissions screen and the Sessions sheet.
 
 ## 5. Lab core (`lab-core`, Python)
 
@@ -225,11 +256,17 @@ The pipeline runs over the whole session in order. It's deterministic for a give
 |---|---|---|
 | 1. Load | Frames, poses, points, ids, ARKit plane events, session events | — |
 | 2. Point filter | Drop points closer than `near_cut_m` to the camera; optionally drop far points and frames without `normal` tracking | 0.25 m (CurvSurf) |
-| 3. Motion gate | Use a frame's points only if the camera moved ≥ `gate_move_m` or turned ≥ `gate_turn_deg` since the last accepted frame. Modes: `intended` / `upstream` (the inverted gate, §1) / `off` | 3 cm, 3° (CurvSurf) |
+| 3. Motion gate | Decides which samples reach the accumulator. Modes: **`off`** (every frame); **`intended`** (a frame counts only if the camera moved ≥ `gate_move_m` or turned ≥ `gate_turn_deg` since the last accepted frame); **`upstream`** (the inverted gate, §1); **`parallax`** (per feature: a new sample counts once the direction from the camera to that point has turned ≥ `gate_parallax_deg` since that feature's last sample). See *Why gate at all* below. | Mode `off` (decided, §16 Q6); 3 cm, 3° (CurvSurf) for `intended`; 1° for `parallax` |
 | 4. Accumulator | Per feature id: a FIFO of up to `max_samples`, samples beyond `zscore` σ from the mean dropped, and the point placed at the mean of the rest once there are `min_samples`. The cloud keeps up to `max_ids` ids, evicting the oldest first. Also records each point's sample count and spread. | 100, 2.0, 5, 100 000 (CurvSurf) |
 | 5. Plane fit | Every `fit_every` frames: sequential RANSAC on the averaged cloud, then a least-squares refit on the inliers. Models: **vertical** (normal ⟂ gravity, 2-point sample), **horizontal** (normal ∥ gravity, 1-point), **free** (3-point, off by default). The inlier distance can grow with range (`τ = τ₀ + k·z²`) because point depth noise grows with distance. A hypothesis is rejected when its inliers are nearly collinear (an edge seen alone). Points within `edge_keep_m` of an accepted plane's boundary stay available for the next search, so the second wall at a corner keeps its support. Extent = the convex hull of the inliers on the plane, split into connected regions so two separate stretches of the same plane don't merge. See `BUILDING_SAMPLE.png` in §1. | `fit_every` 6 (10 Hz), τ₀ 3 cm, `min_inliers` 30, `min_spread_m` 0.3, `edge_keep_m` 0.1. Starting values, to tune. |
 | 6. Plane tracker | Keeps planes across fits, like ARKit anchors: see §5.2. | Merge terms taken from PlaneKit NMS: 10°, 8 cm, 0.3 overlap |
-| 7. Results | Written to `lab/<run>/results.sqlite`, next to a copy of `config.toml`. Stored so that any frame can be shown without recomputing. | — |
+| 7. Results | Written to `lab/<run>/results.sqlite`, with every `LabConfig` value in its `config` table (L8) and a copy of `config.toml` next to it. Stored so that any frame can be shown without recomputing. | — |
+
+**Why gate at all** (user question, 2026-09-28: "why 3 cm, why not every frame?"). The gate isn't there to save compute. Averaging only removes noise that differs from sample to sample, and two frames 16 ms apart from the same spot give nearly the same VIO estimate. Without a gate at 60 Hz:
+- `min_samples = 5` is reached in 83 ms, so "averaged" means almost nothing.
+- The 100-sample FIFO spans only 1.7 s, so standing still for 2 s replaces every sample taken from another viewpoint.
+
+With a gate, 100 samples means 100 viewpoints. But 3 cm ignores range: it gives 1.7° of parallax on a point 1 m away and only 0.17° at 10 m. For facades at 8–15 m it's too small to matter, not too large. The `parallax` mode gates on that angle per point instead. Every frame is also a real candidate: the upstream gate is inverted, so at walking speed (about 1.7 cm per frame) it accepts almost every frame, and `BUILDING_SAMPLE.png` was made that way. The lab can run all four modes on the same session, so which one to use is part of E3.
 
 ### 5.2 Plane tracker (stage 6)
 
@@ -243,6 +280,7 @@ The pipeline runs over the whole session in order. It's deterministic for a give
 | Setting | Toward recall | Cost |
 |---|---|---|
 | `min_samples` ↓ | Points show up sooner | Noisier points (needle-shaped error along the view ray) |
+| Gate `off` | Points reach `min_samples` sooner | The average is dominated by wherever you stood longest |
 | `min_inliers` ↓ | Planes from less support | More false planes |
 | `min_spread_m` ↓ | Planes from thin strips, such as one trim band | More planes fitted to a single edge |
 | `tau0` ↑, range scaling on | Far walls get support | Nearby surfaces bleed into each other |
@@ -269,12 +307,26 @@ The Blender panel shows them, and the CLI can export them as CSV. There's no gro
 
 ```bash
 python -m planelab info  <bundle>                            # duration, frames, drops, tracking %, point range
-python -m planelab run   <bundle> --config configs/recall.toml --name recall-01
+python -m planelab run   <bundle> --config configs/recall.toml --name recall-01 [--progress]
 python -m planelab synth <out.planelab> --scene facade --seed 7   # synthetic session, no video; scenes: facade, edges, room
 python -m planelab export <bundle> --run recall-01 --csv out.csv  # per-frame readouts
 ```
 
+`--progress` prints one JSON line per step (`{"frame": 1200, "of": 7200}`). Blender's Recompute reads it (§6).
+
 ## 6. Blender add-on (`blender-addon`)
+
+**Blender is the main interface (L7).** Every CLI command has a Blender operator, so a whole session of work happens in Blender:
+
+| CLI | In Blender |
+|---|---|
+| `info` | Session info in the panel, filled on import |
+| `run` | **Recompute** |
+| `synth` | *File › New › Plane Lab Synthetic Session* (scene, seed) |
+| `export` | **Export CSV** in the panel |
+| — | *(Should)* a session browser for the sessions folder (set in the add-on preferences; default `~/PlaneLab/sessions/`) and a run picker |
+
+Operators are thin: each calls one core function, so the CLI and Blender can't drift apart.
 
 - **Packaging:** a Blender 5.0+ extension (`blender_manifest.toml`) with no bundled wheels. numpy 1.26.4 and `sqlite3` come with Blender 5.0.1 (checked 2026-09-25). The core has no `bpy` import and ships inside the extension's zip.
 - **Import:** *File › Import › Plane Lab Session*. It accepts a `.planelab` folder or its `.zip`; a zip is extracted to a cache folder. It then:
@@ -293,18 +345,29 @@ python -m planelab export <bundle> --run recall-01 --csv out.csv  # per-frame re
     A frame-change handler updates these meshes from cached arrays. Only the camera is keyframed.
   - **Timeline markers** from `event` rows.
 - **Panel** (*3D View › Sidebar › Plane Lab*):
-  - session info
+  - session info, including the site (lat/lon, accuracy) when location was logged
   - layer toggles
   - the per-frame readouts (§5.4)
   - every `LabConfig` setting, with load and save as TOML (the same files the CLI reads)
-  - **Recompute:** runs the core in the background with a progress bar and a Cancel button, without freezing Blender, and stores the output as a named run
+  - **Recompute:** runs the pipeline with a progress bar and a Cancel button, without freezing Blender, and stores the output as a named run
+  - **Export CSV** of the per-frame readouts
   - *(Should)* a run picker to switch between runs and compare them
+
+**How Recompute runs** (decided with L7). It starts the CLI as a **separate process with Blender's own Python**: `sys.executable -m planelab run <bundle> --config <tmp>.toml --name <run> --progress`. In Blender 5.0.1, `sys.executable` is `…/Blender.app/Contents/Resources/5.0/python/bin/python3.11`, and it runs on its own with numpy 1.26.4 and `tomllib` (checked 2026-09-28). A modal timer operator reads the progress lines, and Cancel ends the process. Compared with a thread inside Blender:
+- The UI stays smooth. RANSAC's Python loops would otherwise hold the interpreter lock that Blender's panels and frame handler also need.
+- Cancel is immediate and needs no checks inside the core.
+- A crash in the core can't take Blender down.
+- Several runs can go at once on the Mac Studio's 12 cores, which makes E3 setting sweeps cheap.
+
+Import, scrubbing and Export CSV stay in-process: they need `bpy` or are fast. Results come back through `results.sqlite`, so no data crosses the process boundary.
+
+**Dev loop.** The extension's source folder is linked into a local extension repository, so a code change loads with *Reload Scripts* instead of a zip rebuild and reinstall. The zip is only for the headless tests and for handing over.
 
 ## 7. Tech stack
 
 | Part | Stack |
 |---|---|
-| iOS | Swift 6, Xcode 26.3, iOS 18, ARKit + RealityKit (existing), AVFoundation `AVAssetWriter` (HEVC), system `SQLite3`, `os.Logger`. No new third-party packages. |
+| iOS | Swift 6, Xcode 26.3, iOS 18, ARKit + RealityKit (existing), AVFoundation `AVAssetWriter` (HEVC), system `SQLite3`, CoreLocation, `os.Logger`. No new third-party packages. |
 | Python core | Python **3.11**, the same as Blender 5.0.1's bundled 3.11.13. **numpy 1.26.4**, pinned to Blender's version. Standard library: `sqlite3`, `tomllib`, `zipfile`, `logging`, `dataclasses`. |
 | Python dev | `virtualenv` `.venv`, pytest, pytest-cov, ruff, all pinned in `requirements.txt` |
 | Blender | 5.0.1, extension format (`blender --command extension build`) |
@@ -312,7 +375,7 @@ python -m planelab export <bundle> --run recall-01 --csv out.csv  # per-frame re
 ## 8. Commands
 
 ```bash
-# iOS (unchanged, plus the new SessionLog target)
+# iOS (unchanged; the recording tests run inside PlaneKit's swift test)
 cd ARKit_WallDetection/PlaneKit && swift test
 xcodebuild -project ARKit_WallDetection/SidingsAR.xcodeproj -scheme SidingsAR \
   -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
@@ -326,7 +389,7 @@ pytest --cov=planelab --cov-fail-under=85
 
 # Blender extension: build, install, headless smoke test
 BLENDER=/Applications/Blender.app/Contents/MacOS/Blender
-$BLENDER --command extension build --source-dir blender --output-dir dist
+./scripts/build_extension.sh        # stages the extension plus a real copy of the core (§17.4 P6), then runs `extension build` into dist/
 $BLENDER --command extension install-file -r user_default -e dist/planelab-<version>.zip
 $BLENDER --background --factory-startup --python-exit-code 1 \
   --python tests/blender/smoke_import.py -- <synthetic.planelab>
@@ -339,23 +402,49 @@ sidings_poc/
 ├── SPEC.md                              this file: spec, then plan and tasks
 ├── session-format/fixtures/             contract fixtures read by the Swift and Python tests
 ├── ARKit_WallDetection/
-│   ├── SidingsAR/Recording/             SessionRecorder, VideoWriter, SessionsView (glue)
+│   ├── SidingsAR/Recording/             ARRecordAdapter, SessionRecorder, LocationFeed, PermissionsView, SessionsView (glue only)
 │   └── PlaneKit/
-│       ├── Sources/SessionLog/          new target: FrameRecord, packing, schema, SQLite writer, drop policy
-│       └── Tests/SessionLogTests/
+│       ├── Sources/PlaneKit/Recording/  Constants.swift, records, packing, schema, SQLite writer, drop policy, VideoWriter
+│       └── Tests/PlaneKitTests/Recording/
 └── PlaneLab/                            new
     ├── requirements.txt / pyproject.toml
-    ├── src/planelab/                    core, no bpy: session, accumulate, fit, track, pipeline, synth, cli
-    ├── blender/                         extension: manifest, import operator, panel, frame handler
+    ├── src/planelab/                    core, no bpy: session, schema, config, gate, accumulate, fit, search, track, pipeline, results, synth, cli
+    ├── blender/planelab_blender/        extension: manifest, operators, panel, frame handler; vendor/planelab links to the core (§17.4 P6)
+    ├── scripts/build_extension.sh       stages the extension with a real copy of the core, then builds the zip
+    ├── spikes/                          R1 and R2 spike scripts and notes (kept on disk)
     ├── configs/                         default.toml, recall.toml
     └── tests/                           pytest suites; tests/blender/ for headless Blender smoke tests
 ```
 
-Recordings stay **out of git**: `*.planelab` goes in `.gitignore`. They are large, and they contain video of houses and possibly people. On the Mac, keep them under `~/PlaneLab/sessions/`.
+Recordings stay **out of git**: `*.planelab` goes in `.gitignore`. They are large, and they contain video of houses, possibly people, and the site's GPS position. On the Mac, keep them under `~/PlaneLab/sessions/`.
 
 ## 10. Code style
 
-Swift follows the existing SidingsAR rules: value types in `SessionLog`, glue in the app, `os.Logger`, no `print`.
+Swift follows the existing SidingsAR rules: value types and writers in `PlaneKit`, glue in the app, `os.Logger`, no `print`.
+
+```swift
+/// Every recorder setting in one place (L8). Edit and rebuild; each recording stores them in `meta` as `const.<name>`.
+public struct RecorderConstants: Sendable {
+    public var videoFPS = 60
+    public var videoBitrate = 8_000_000
+    public var keyframeIntervalS = 0.5
+    public var commitIntervalS = 0.5
+    public var pixelPoolSize = 4
+    public var lowDiskBytes: Int64 = 1_000_000_000
+    public var headingFilterDeg = 1.0
+
+    public static let current = RecorderConstants()
+
+    /// One `meta` row per stored property, read by reflection so a new constant can't be left out.
+    public var metaRows: [(key: String, value: String)] {
+        Mirror(reflecting: self).children.compactMap { child in
+            child.label.map { ("const.\($0)", "\(child.value)") }
+        }
+    }
+}
+```
+
+Tests build a modified copy (for example `pixelPoolSize = 1` to force image drops) instead of changing the file.
 
 ```swift
 /// Everything the recorder keeps from one ARFrame. Built inside the delegate call; the frame itself is never retained.
@@ -399,10 +488,10 @@ def fit_vertical_plane(
 
 | Level | What | Where |
 |---|---|---|
-| Swift unit (Mac) | `SessionLog`: packing round-trip, schema, batched commits, drop policy under backpressure, reading a writer that was never closed (crash consistency), contract fixtures | `PlaneKit/Tests/SessionLogTests/` |
-| Python unit | Reader (contract fixtures, synthetic bundles, zip input, unknown version refused); accumulator (CurvSurf semantics on hand-built cases, all three gate modes); RANSAC (planted planes with noise and outliers; normal and offset error bounds; the priors); tracker (stable ids under jitter, merge, stale, no id flips); pipeline determinism; CLI smoke | `PlaneLab/tests/` |
+| Swift unit (Mac) | Recording in `PlaneKit`: packing round-trip, schema, batched commits, drop policy under backpressure, reading a writer that was never closed (crash consistency), every constant in `meta`, location and heading rows, contract fixtures. Video writer with synthetic pixel buffers: HEVC output, timestamp gaps for skipped images, and a file that still plays when the writer never finished. | `PlaneKit/Tests/PlaneKitTests/Recording/` |
+| Python unit | Reader (contract fixtures, synthetic bundles, zip input, unknown version refused); accumulator (CurvSurf semantics on hand-built cases, all four gate modes); run config stored in `results.sqlite`; `--progress` output; RANSAC (planted planes with noise and outliers; normal and offset error bounds; the priors); tracker (stable ids under jitter, merge, stale, no id flips); pipeline determinism; CLI smoke | `PlaneLab/tests/` |
 | Contract | The same fixtures decoded by Swift and by Python must give the same values | `session-format/fixtures/` |
-| Blender, headless | Import a synthetic session; check the objects, frame range and camera keys; check layer vertex counts at chosen frames | `PlaneLab/tests/blender/` |
+| Blender, headless | Drive every operator through `bpy.ops.planelab.*`: create a synthetic session, import it, Recompute (as a separate process) and wait for it, export CSV. Check the objects, frame range, camera keys and layer vertex counts at chosen frames | `PlaneLab/tests/blender/` |
 | Device (user) | The recorder checkpoints in §13. Never reported as done unless the user saw them. | — |
 
 - Coverage floor: **85 %** on `src/planelab`. Blender glue is covered by the headless tests instead.
@@ -415,6 +504,8 @@ def fit_vertical_plane(
 - `idx` is the only join key.
 - Raw recordings are immutable, and results go under `lab/`.
 - The core stays `bpy`-free and numpy-only.
+- Every CLI command has a Blender operator, and both call the same core function.
+- Recorder settings live only in `RecorderConstants`, and every one is written to `meta`.
 - `swift test`, `pytest` and `ruff` pass before a commit.
 - Update this spec when a decision changes. Bump `schema_version` on any format change.
 
@@ -422,6 +513,7 @@ def fit_vertical_plane(
 - Any new dependency: a Swift package, a Python package beyond numpy in the core, or wheels in the extension.
 - Changing the schema once real recordings exist.
 - Installing on a device.
+- Asking for any iOS permission beyond Camera and Location While In Use.
 - Changing how the existing plane viewer behaves.
 - Using the FindSurface SDK in our code. It's a closed-source binary, and its license for product use hasn't been checked.
 - Commits.
@@ -442,24 +534,26 @@ def fit_vertical_plane(
 | S2 | ≥ 99 % of `ARFrame`s are logged. ≤ 1 % of images are dropped at the default video format. The plane viewer stays as smooth as without recording. |
 | S3 | Force-quit the app during a recording: `session.sqlite` still opens with all frames up to about 1 s before the kill, and `video.mov` plays up to its last fragment. |
 | S4 | A session appears in the Files app and in Finder, and AirDrops as a `.zip` that `planelab info` reads. |
-| S5 | `swift test` is green with the new `SessionLog` tests. The `xcodebuild` compile check has no new warnings. |
+| S5 | After a fresh install, the first launch asks for Camera, then Location, and shows each one's status. With Location denied, recording still works and `meta` says `denied`. With it granted, a session has `location` rows at about 1 Hz and `heading` rows. Every `RecorderConstants` value is in `meta`. |
+| S6 | `swift test` is green with the new recording tests, including the video writer. The `xcodebuild` compile check has no new warnings. |
 
 **Format and core** (automated on the Mac):
 
 | # | Criterion |
 |---|---|
-| S6 | Swift and Python both pass the contract fixtures. An unknown `schema_version` is refused with a clear message. |
-| S7 | On synthetic sessions with σ = 1 cm noise and 20 % outliers, every planted plane is found with normal error < 2° and offset error < 2 cm, and the tracker keeps **one id per planted plane with no id switches**. This includes an **`edges` scene** where points exist only on corners, trim and openings, as in `BUILDING_SAMPLE.png`: both walls at a shared corner are found, and no plane is fitted to a single edge. |
-| S8 | `planelab run` finishes a 2-minute session in < 60 s on the Mac Studio. Pytest coverage is ≥ 85 %. |
+| S7 | Swift and Python both pass the contract fixtures, including `location`, `heading` and `const.*`. An unknown `schema_version` is refused with a clear message. |
+| S8 | On synthetic sessions with σ = 1 cm noise and 20 % outliers, every planted plane is found with normal error < 2° and offset error < 2 cm, and the tracker keeps **one id per planted plane with no id switches**. This includes an **`edges` scene** where points exist only on corners, trim and openings, as in `BUILDING_SAMPLE.png`: both walls at a shared corner are found, and no plane is fitted to a single edge. |
+| S9 | `planelab run` finishes a 2-minute session in < 60 s on the Mac Studio. Its `results.sqlite` holds the full config. Pytest coverage is ≥ 85 %. |
 
 **Blender:**
 
 | # | Criterion |
 |---|---|
-| S9 | A real session imports in < 30 s. Looking through the camera, the raw points sit on the matching image features across the whole timeline, which shows that video, pose and intrinsics are aligned. |
-| S10 | Scrubbing to any frame updates every layer in ≤ 100 ms. |
-| S11 | Change a setting and press Recompute: the new run shows up without restarting Blender, and the UI stays responsive while it runs. |
-| S12 | By eye, on the `BUILDING_SAMPLE.png` building recorded with SidingsAR, you can say for each wall whether our planes appear sooner or later than ARKit's (E2), see the upper-storey points (8–10 m up), and read point-range percentiles (E1). |
+| S10 | Everything the CLI does can be done from the Blender UI: create a synthetic session, import, session info, Recompute, export CSV. The headless test drives all of them through `bpy.ops.planelab.*`. |
+| S11 | A real session imports in < 30 s. Looking through the camera, the raw points sit on the matching image features across the whole timeline, which shows that video, pose and intrinsics are aligned. |
+| S12 | Scrubbing to any frame updates every layer in ≤ 100 ms. |
+| S13 | Change a setting and press Recompute: the run happens in a separate process, the UI stays responsive, Cancel stops it within 1 s, and the new run shows up without restarting Blender. |
+| S14 | By eye, on the `BUILDING_SAMPLE.png` building recorded from under 5 m, you can say for each wall whether our planes appear sooner or later than ARKit's (E2) and see the upper-storey points (8–10 m up). On the second site recorded from 10–15 m and farther, you can read point-range percentiles (E1). |
 
 **Docs:** `ARKit_WallDetection/README.md` (the recorder), `PlaneLab/README.md` (new), the root `README.md` and `CLAUDE.md`, and `CONSOLIDATION.md` §10b (the E1/E2 findings) are updated.
 
@@ -470,6 +564,8 @@ def fit_vertical_plane(
 - Ground truth, hand-marked walls, and recall/precision metrics (L3).
 - Segmentation (YOLOv8-seg), monocular depth, raw IMU from CoreMotion (CONSOLIDATION §5 and §4).
 - Replaying a recording back into ARKit on the phone.
+- Using location for tracking (`ARGeoTrackingConfiguration`) or `.gravityAndHeading` world alignment. Location is only logged (L9).
+- Other iOS permissions: microphone, Photos, Motion & Fitness, Local Network (§4 R13).
 - Android, and the FindSurface SDK.
 
 ## 15. Risks
@@ -478,25 +574,456 @@ def fit_vertical_plane(
 |---|---|---|
 | R1 | HEVC at 1440p60 plus feature-point logging overloads the iPhone 13: dropped images, heat, worse tracking | Hardware encoder, bounded pools, drops and thermal state logged. Fallback: a 30 fps video format, or an image every other frame (the schema already allows `has_image = 0`). **Spike this first.** |
 | R2 | Blender's movie clips mishandle timestamp gaps or seek slowly in HEVC, so video and timeline drift | Keyframe at least every 0.5 s; Blender proxies as a fallback. **Spike this first** with a synthetic video that has gaps. |
-| R3 | Too much memory to show any frame's averaged cloud (it can reach tens of thousands of points, across thousands of frames) | Snapshots only at the fit cadence, stored as changes since the last snapshot, with periodic full snapshots. Measured against S10. |
-| R4 | Pure Python is too slow | Vectorized numpy, fitting every N frames, subsampling. Measured against S8. |
+| R3 | Too much memory to show any frame's averaged cloud (it can reach tens of thousands of points, across thousands of frames) | Snapshots only at the fit cadence, stored as changes since the last snapshot, with periodic full snapshots. Measured against S12. |
+| R4 | Pure Python is too slow | Vectorized numpy, fitting every N frames, subsampling. Measured against S9. |
 | R5 | Relocalization shifts the world frame mid-session, so poses and points jump | Logged as events and shown as markers. The lab shows the jumps rather than hiding them. Anchor-relative storage (CONSOLIDATION §4) is a product concern, not a concern for this raw log. |
 | R6 | ARKit anchor callbacks aren't tied to a frame | Stamped with the last logged frame (±1 frame at 60 Hz). Fine for viewing by eye. |
+| R7 | GPS is off by 5–20 m next to buildings, and the compass is thrown off by cars and steel | Accuracy is logged with every fix and heading. Location is used only to identify the site and give a rough facade direction, never for geometry. |
+| R8 | Recompute depends on Blender's bundled Python binary, whose path changes between Blender versions | Always use `sys.executable` at runtime, never a hard-coded path. The headless test runs Recompute for real. |
 
 ## 16. Open questions
 
-Each has a proposed default.
+All closed. The user accepted every remaining default on 2026-09-28 ("Everything seems fine").
 
-1. **Keep recording ARKit's plane anchors?** You chose visual checks only. I kept them because they're cheap (the app already receives them), and seeing them next to ours is the visual comparison for E2. *Default: keep.*
-2. **Pydantic.** The global rules use Pydantic at I/O boundaries. The core has to load inside Blender's Python, which ships without Pydantic. *Default: frozen dataclasses with explicit validation for the session reader and the TOML config. Bundling Pydantic wheels into the extension is possible if you want it.*
-3. **Where `SessionLog` lives.** *Default: a new target in the PlaneKit package*, which keeps one `swift test`. PlaneKit's current "simd and Foundation only" rule stays true for the `PlaneKit` target; `SessionLog` also imports the system `SQLite3`.
-4. **Names:** "Plane Lab", the `.planelab` bundle and the `planelab` package. *Default: as written.*
-5. **Session length and devices:** *Default: up to 10 minutes. iPhone 13 first, 13 Pro second.*
+1. **Keep recording ARKit's plane anchors?** You chose visual checks only. I kept them because they're cheap (the app already receives them), and seeing them next to ours is the visual comparison for E2. **Decided: keep.**
+2. ~~**Pydantic.**~~ **Decided (L6):** frozen dataclasses with explicit validation for the session reader and the TOML config. No Pydantic, because Blender's Python doesn't ship it.
+3. ~~**Where `SessionLog` lives.**~~ **Decided (L11):** everything goes into the `PlaneKit` target, including the video writer and `Constants.swift`.
+4. **Names:** "Plane Lab", the `.planelab` bundle and the `planelab` package. **Decided: as written.**
+5. **Session length and devices:** **Decided: up to 10 minutes. iPhone 13 first, 13 Pro second.**
+6. **Default motion gate.** You asked why 3 cm, and why not every frame (see *Why gate at all*, §5.1). **Decided: `off` (every frame), with `intended`, `upstream` and `parallax` kept for comparison in E3.** Any mode can be picked per run from the Blender panel with no rebuild, so the default only sets where tuning starts.
 
 ## 17. Plan
 
-*Written after this spec is approved.* The outline follows §2's build order: spike R1 and R2, then `session-format`, then `recorder` ∥ `lab-core`, then `blender-addon`, then the first real sessions (E1–E3) and docs.
+*Drafted 2026-09-28 after the spec was approved. Waiting for review.*
+
+### 17.1 Approach
+
+Three ideas set the order:
+
+1. **Risks first.** R1 (the iPhone 13 can't encode video and log at 60 Hz) and R2 (Blender can't keep our video in step with the timeline) could each force a format change. Both need the video writer, so the writer comes first, tested on the Mac, and then the two spikes.
+2. **One thin path end to end before going deep.** A tracer bullet takes a real iPhone recording (frames, poses, points, video) through the Python reader into Blender, and the user checks that the points sit on the image (S11). That proves the contract, the axis conversion and the video timing before any fitting code exists.
+3. **Two tracks, then the UI.** After the tracer, the recorder (Swift, needs the phone) and the lab core (Python, Mac only) don't depend on each other. The lab core fills the time spent waiting for device checks. Blender comes last because it shows what both produce.
+
+This refines §2's build order: the video writer moves ahead of the spikes, and a tracer bullet crosses all four modules before either track goes deep.
+
+### 17.2 Dependency graph
+
+```
+T1 VideoWriter (PlaneKit, Mac)
+ ├─ T2 spike R2: Blender video ─────────────────────────────────────────────┐
+ ├─ T3 spike R1: iPhone 13 load (device) ──────────┐                        │
+ └─ T4 schema v1, records, contract fixture        │                        │
+     ├─ T5 SessionWriter ──────────────────────────┴─ T7 Record/Stop on the phone
+     │                                                  ├─ T10 stop reasons, events, low disk
+     │                                                  ├─ T11 ARKit anchors, Mark
+     │                                                  ├─ T12 permissions, location
+     │                                                  └─ T13 Sessions sheet
+     └─ T6 Python reader, `info`
+         ├─ T8 Blender import: camera, raw points ──────── T9 video behind the camera (needs T2, T7)
+         ├─ T14 synth ─┐
+         └─ T15 LabConfig ─┴─ T16 gate, accumulator ─┐
+                        └─ T17 RANSAC ─ T18 search, extents ─ T19 tracker ─┴─ T20 pipeline, run, export
+                                                                                 └─ T21 layers (needs T9) ─ T22 Recompute ─ T23 other operators
+T24 field session 1 (E2, E3) and T25 field session 2 (E1) need Checkpoint 3. T26 docs runs alongside them.
+```
+
+### 17.3 Phases
+
+| Phase | Tasks | Where | Ends with |
+|---|---|---|---|
+| 0. Risks | T1–T3 | Mac, then iPhone 13 | Checkpoint 0: R1 and R2 answered |
+| 1. Tracer bullet | T4–T9 | Mac, iPhone 13 | Checkpoint 1: S11 on a real recording |
+| 2A. Recorder | T10–T13 | Mac, iPhone 13 and 13 Pro | Checkpoint 2A: S1–S6 |
+| 2B. Lab core | T14–T20 | Mac | Checkpoint 2B: S7–S9 |
+| 3. Blender | T21–T23 | Mac | Checkpoint 3: S10–S13 |
+| 4. Field work and docs | T24–T26 | Outdoors, Mac | Final: S14, docs |
+
+**Parallel work.** Track 2B needs only T6, so it can start as soon as the reader exists, including while T3 and T7 wait for device checks. Tracks 2A and 2B share only the schema, which T4 freezes.
+
+### 17.4 Plan decisions (logged 2026-09-28)
+
+Minor decisions made while planning, under the user's "minor decisions I trust you, just keep them logged". To change one, edit this table.
+
+| # | Decision | Why |
+|---|---|---|
+| P1 | The plan and tasks live here (L4). `ARKit_WallDetection/tasks/` isn't touched; it still has 48 unticked items from earlier SidingsAR work. | L4, and never overwrite another plan |
+| P2 | `session-format/schema_v1.sql` is the one source of the DDL. Swift and Python each embed a copy, and a test on each side checks that the copy matches the file exactly. | One contract, no drift, and the Blender zip stays self-contained |
+| P3 | The contract fixture (`session-format/fixtures/v1/tiny.planelab`: 10 frames, every table, a 64 × 48 video) is written by the Swift writer when `PLANELAB_WRITE_FIXTURES=1`, committed, and checked by both sides against `expected.json`. | The real writer makes the fixture, so the contract tests the real thing |
+| P4 | Test videos carry their frame number as a pattern of blocks, so a test can tell which frame is on screen. | Makes R2 and S11-style alignment checks automatic |
+| P5 | The pixel pool is the writer adaptor's own pool, capped at `pixelPoolSize`; hitting the cap means "skip this image". If R1 fails, fall back in this order: an image every other frame (poses and points stay at 60 Hz), then a 1280 × 720 video format. | No extra pool code, and the fallbacks keep full-rate metadata |
+| P6 | Python layout: the core in `PlaneLab/src/planelab/` (`pip install -e .` into `.venv`). The extension in `PlaneLab/blender/planelab_blender/` imports it from `vendor/planelab`, a symlink to the core for the dev loop. `scripts/build_extension.sh` copies the real files into a staging folder before `extension build`. Recompute's subprocess gets `PYTHONPATH=<extension>/vendor`. | One copy of the core, live edits in Blender, and a zip that works on its own |
+| P7 | Synthetic sessions write the real schema through a small Python writer used only by `synth`. Their ground truth goes in `synth_truth.json` next to `session.sqlite`, not in the schema. | S8 needs truth; real sessions have none (L3) |
+| P8 | Python logs go silently to `~/PlaneLab/logs/planelab.log` (rotating). The CLI also prints warnings to stderr, and Blender operators also use `self.report`. | Global logging rule |
+| P9 | Spike scripts and notes stay in `PlaneLab/spikes/`. | Tests stay on disk |
+| P10 | Pure recorder logic (stop-reason mapping, the low-disk rule, which permission screen to show, session summaries) goes in PlaneKit with tests. The app keeps only glue. | Testable on the Mac |
+| P11 | Every device check asks before installing (§12). An iPhone 13 and a 13 Pro are paired with this Mac as of 2026-09-28. | CLAUDE.md |
+| P12 | The results store keeps a full snapshot of the averaged cloud every 60 fits, with changes in between (R3). T20 measures this against S12 and adjusts it. | Starting point for R3 |
+| P13 | ARKit → record conversions for the recorder live in one file, `SidingsAR/Recording/ARRecordAdapter.swift`. The SidingsAR rule "`PlaneAnchorAdapter` is the only place that converts ARKit types" becomes "`PlaneAnchorAdapter` (viewer) and `ARRecordAdapter` (recorder)". | Keeps the rule's intent: one place per consumer |
+
+### 17.5 Risks found while planning
+
+These are in addition to §15.
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| The image copy runs on the main actor, because the ARSession delegate queue is main: about 4.4 MB per frame, 265 MB/s at 60 Hz | The plane viewer stutters | R1 measures the copy time p95. Fallbacks: a GPU copy with `VTPixelTransferSession`, then P5 |
+| `CVPixelBuffer` isn't `Sendable`, and the project builds with Swift 6 strict concurrency | Warnings, or an unsafe hand-off | One small `@unchecked Sendable` box owned by the recorder, used only to hand the buffer to the writer queue (T5) |
+| A background Blender script may not be able to read a movie clip's pixels | T2 can't check alignment by itself | Render the frame through the sequencer and read the file; failing that, the user checks by eye |
+| A 100-sample FIFO for 100 000 ids is about 120 MB as float32 | Slow or heavy in numpy | Preallocated ring buffers sized to the live ids, grown in chunks. Measured against S9 |
+| Blender's extension guidelines discourage changing `sys.path` | None for a private add-on | Accepted; revisit only if it's ever published |
+| The user can grant only approximate location | The site is known only to within a few km | Logged in `meta.location_accuracy`, and shown on the permissions screen |
+
+### 17.6 Definition of done (every task)
+
+A task is done when its own checks in §18 pass, and:
+- **Swift tasks:** `swift test` is green and the `xcodebuild` compile check has no new warnings.
+- **Python tasks:** `pytest --cov=planelab --cov-fail-under=85`, `ruff check .` and `ruff format --check .` pass.
+- **Blender tasks:** the headless suite in `PlaneLab/tests/blender/` passes.
+- New behavior has tests that fail without the change. Tests stay on disk.
+- Docs change with the code: the README of the part touched, a `CLAUDE.md` when a rule changes, and this spec when a decision changes.
+- Device and user checks stay unticked until the user reports them. Device results that weren't observed are never reported.
+- Commits follow the rule the user sets for this plan.
 
 ## 18. Tasks
 
-*Written after the plan is approved.* Each task will have acceptance criteria, a verify step and a device checkpoint where it needs one.
+Tick a box only when its check has passed. Boxes marked **Device** or **User** are ticked only after the user reports the result.
+
+### Phase 0: Risks
+
+#### T1. Video writer in PlaneKit, tested on the Mac · M · S3, S6 (part)
+
+`RecorderConstants` (`Constants.swift`) and a `VideoWriter` around `AVAssetWriter`: HEVC at the capture size, presentation time `idx / fps`, gaps for skipped images, a keyframe at least every `keyframeIntervalS`, a fragmented movie, and the adaptor's pool capped at `pixelPoolSize` (P5). Both spikes need it, so it comes first. `PLANELAB_SPIKE_OUT=<dir> swift test --filter spikeVideo` writes a 10 s, 1920 × 1440 video with gaps and frame-number blocks (P4) for T2. The PlaneKit import rule in `ARKit_WallDetection/CLAUDE.md` is updated here, since this is where the rule stops being true.
+
+- [ ] 120 synthetic frames with 10 skipped read back (`AVAssetReader`) as HEVC with exactly the expected presentation times.
+- [ ] With the pool full, `append` returns *skipped* at once instead of blocking.
+- [ ] A copy of the file taken mid-write, after at least two fragments, opens and holds the frames up to its last fragment.
+- [ ] `metaRows` lists every `RecorderConstants` property.
+- **Verify:** `swift test`; `ffprobe` on the spike video shows `hevc` and keyframes ≤ 0.5 s apart.
+- **Depends on:** nothing.
+- **Files:** `PlaneKit/Sources/PlaneKit/Recording/Constants.swift`, `.../Recording/VideoWriter.swift`, `PlaneKit/Tests/PlaneKitTests/Recording/VideoWriterTests.swift`, `.../Recording/TestFrames.swift`, `ARKit_WallDetection/CLAUDE.md`
+
+#### T2. Spike R2: Blender keeps our video in step · S · R2
+
+A headless Blender script loads the T1 spike video as a movie clip. For at least 50 sampled frames, including the ones right after gaps, it checks that Blender frame `idx + 1` shows image `idx`. It tries timecode *None* and *Record Run*, and times random seeks. Then the user scrubs it in the Blender UI.
+
+- [ ] One setting gives 0 mismatches. It's recorded in §15 R2 with the seek times.
+- [ ] The median random seek is ≤ 100 ms, or the need for proxies is recorded.
+- [ ] If no setting works, a fallback is chosen and logged: the recorder repeats the last image for skipped frames, or the importer maps frames through a lookup.
+- [ ] **User:** scrubbing the clip in Blender looks right.
+- **Verify:** `$BLENDER --background --factory-startup --python PlaneLab/spikes/r2_video_alignment.py -- <video>`
+- **Depends on:** T1.
+- **Files:** `PlaneLab/spikes/r2_video_alignment.py`, `PlaneLab/spikes/README.md`, `SPEC.md`
+
+#### T3. Spike R1: HEVC 1440p60 on the iPhone 13 · M · R1
+
+Minimal glue behind a temporary HUD toggle, *Rec video*. Inside the frame delegate, each `ARFrame`'s `capturedImage` is copied into the writer's pool, then appended on the writer queue. The frame is never retained. The HUD shows images written and dropped, the copy time p95 and the thermal state, and the same numbers go to `r1-summary.json` next to the video in `Documents/Spikes/`. Adds the file-sharing Info.plist keys (§4 R8) so the files show up in Finder.
+
+- [ ] The compile check has no new warnings; `swift test` is green.
+- [ ] **Device:** 5 minutes on the iPhone 13 at the default format. `r1-summary.json` gives the dropped %, copy p95 and highest thermal state. The user reports whether the plane viewer stutters, and *mem MB* at the start and end.
+- [ ] The decision is logged in §15 R1: keep 60 fps images, or take the P5 fallback. `RecorderConstants` is updated to match.
+- **Verify:** compile check; the device run (ask before installing).
+- **Depends on:** T1.
+- **Files:** `SidingsAR/Recording/VideoCapture.swift`, `SidingsAR/HUDView.swift`, `SidingsAR/ARSessionController.swift`, `SidingsAR.xcodeproj/project.pbxproj` (Info keys only)
+
+#### Checkpoint 0: risks answered
+
+- [ ] `swift test` is green and the compile check is clean.
+- [ ] R1 and R2 have findings and decisions in §15.
+- [ ] If a spike failed with no working fallback: stop and re-spec with the user.
+- [ ] **User:** review before Phase 1.
+
+### Phase 1: Tracer bullet (a real recording reaches Blender)
+
+#### T4. Schema v1, records and the contract fixture · M · S7
+
+`session-format/schema_v1.sql` with every §3.3 table. The Swift records (`FrameRecord`, `AnchorRecord`, `LocationRecord`, `HeadingRecord`, `EventRecord`), little-endian BLOB packing, and a synchronous `SessionDatabase` that creates the schema and writes `meta` (with the `const.*` rows at open) and rows. Generates the contract fixture (P2, P3).
+
+- [ ] The DDL embedded in Swift matches `schema_v1.sql` exactly.
+- [ ] Every BLOB column round-trips.
+- [ ] `PLANELAB_WRITE_FIXTURES=1 swift test` writes `session-format/fixtures/v1/tiny.planelab/` and `expected.json`. A normal run checks that the committed fixture still matches.
+- **Verify:** `swift test`
+- **Depends on:** T1 (for the fixture's video).
+- **Files:** `session-format/schema_v1.sql`, `session-format/README.md`, `PlaneKit/Sources/PlaneKit/Recording/{Records,Packing,SessionDatabase}.swift`, `PlaneKit/Tests/PlaneKitTests/Recording/{PackingTests,ContractTests}.swift`
+
+#### T5. Session writer: queue, batches, drops, crash safety · M · S3, S6
+
+`SessionWriter` runs on its own serial queue over `SessionDatabase`: WAL mode, one transaction per `commitIntervalS` (with the clock injected for tests), a bounded queue that drops whole frames and counts them, and finalize (counters, `stopped_at`, `stop_reason`). The pixel buffer is handed to `VideoWriter` through one `@unchecked Sendable` box (§17.5).
+
+- [ ] With a stalled database (a test double), `enqueue` never blocks, drops whole frames, and `frames_dropped` matches.
+- [ ] A database that was never finalized opens and holds every frame committed before the last batch.
+- [ ] It builds under strict concurrency with no warnings.
+- **Verify:** `swift test`
+- **Depends on:** T4.
+- **Files:** `PlaneKit/Sources/PlaneKit/Recording/SessionWriter.swift`, `PlaneKit/Tests/PlaneKitTests/Recording/SessionWriterTests.swift`, small edits to `VideoWriter.swift`
+
+#### T6. Python package, session reader and `planelab info` · M · S7
+
+Creates `PlaneLab/`: `pyproject.toml`, a pinned `requirements.txt` (numpy 1.26.4, pytest, pytest-cov, ruff), a `.venv` on Python 3.11, ruff settings and logging (P8). `planelab.session` reads `meta`, frames on demand (`numpy.frombuffer`), anchors, location, heading and events. It refuses unknown versions and accepts a zip. `planelab.schema` embeds the DDL (P2). Adds the CLI's `info` command, and adds `*.planelab`, `.venv/` and `dist/` to the root `.gitignore`.
+
+- [ ] The contract fixture decodes to `expected.json`, the same values Swift checks.
+- [ ] `schema_version = 2` is refused with a message naming the version found and the versions supported.
+- [ ] `python -m planelab info` works on the fixture folder and on its zip.
+- **Verify:** `pytest --cov=planelab --cov-fail-under=85`; `ruff check . && ruff format --check .`
+- **Depends on:** T4.
+- **Files:** `PlaneLab/pyproject.toml`, `PlaneLab/requirements.txt`, `PlaneLab/src/planelab/{__main__,cli,session,schema,log}.py`, `PlaneLab/tests/{test_session,test_cli}.py`, `.gitignore`
+
+#### T7. Recording on the phone: Record/Stop, frames and video · M · S2, S4
+
+The T3 glue becomes the real recorder, and the spike toggle goes away:
+- **Record/Stop** in the HUD.
+- `SessionRecorder` builds a `FrameRecord` inside the frame delegate and hands it, with the pool copy of the image, to the writers.
+- Sessions go to `Documents/Sessions/<stamp>.planelab`.
+- The HUD shows elapsed time, frames, images dropped, MB written and free space.
+- The ARKit → record conversion lives in `ARRecordAdapter.swift` (P13).
+
+- [ ] The compile check is clean; `swift test` is green.
+- [ ] **Device:** the user records 1 minute on the iPhone 13 and copies it through Finder. `planelab info` shows ≥ 99 % of frames logged, and the image drop rate.
+- **Verify:** compile check; `planelab info <session>`
+- **Depends on:** T3, T5, T6.
+- **Files:** `SidingsAR/Recording/{SessionRecorder,ARRecordAdapter}.swift`, `SidingsAR/HUDView.swift`, `SidingsAR/ARSessionController.swift`; `SidingsAR/Recording/VideoCapture.swift` is removed
+
+#### T8. Blender extension and import: camera and raw points · M · S10 (part)
+
+The extension layout from P6: manifest, the `vendor/planelab` link, `scripts/build_extension.sh`, and the local-repository dev loop. *File › Import › Plane Lab Session* does the following:
+- sets the scene fps and frame range, and creates one collection
+- keyframes the camera, converted from ARKit to Blender axes
+- sets lens, shift and resolution from the intrinsics
+- adds the raw-points layer, driven by a frame-change handler from cached arrays
+- turns `event` rows into markers
+
+- [ ] Headless: importing the fixture gives the expected frame range. Camera keys at 3 sampled frames match the converted poses (to 1e-5), and raw-point vertex counts there equal `point_count`.
+- [ ] The built zip installs with `extension install-file`, and an edit to the source shows up after *Reload Scripts*.
+- **Verify:** `$BLENDER --background --factory-startup --python-exit-code 1 --python PlaneLab/tests/blender/smoke_import.py -- <fixture>`
+- **Depends on:** T6.
+- **Files:** `PlaneLab/blender/planelab_blender/blender_manifest.toml`, `.../{__init__,import_op,layers}.py`, `PlaneLab/scripts/build_extension.sh`, `PlaneLab/tests/blender/smoke_import.py`
+
+#### T9. Blender: the video behind the camera · S · S11
+
+The recording's `video.mov` becomes the camera's background movie clip, using the setting from T2. It's sized to the captured image, and frames with `has_image = 0` are handled.
+
+- [ ] Headless: on the fixture video, frame `idx + 1` shows image `idx` (P4 blocks).
+- [ ] **User (S11):** on the T7 recording, looking through the camera, the raw points sit on image features across the whole timeline.
+- **Verify:** the smoke test, then the user's check in Blender.
+- **Depends on:** T2, T7, T8.
+- **Files:** `PlaneLab/blender/planelab_blender/{import_op,camera}.py`, `PlaneLab/tests/blender/smoke_import.py`
+
+#### Checkpoint 1: tracer bullet
+
+- [ ] `swift test`, the compile check, `pytest` (≥ 85 %) and `ruff` are green.
+- [ ] **User:** S11 holds on a real iPhone 13 recording, so video, pose, intrinsics and axes agree.
+- [ ] **User:** review before the two tracks.
+
+### Phase 2A: Recorder complete (Swift, device)
+
+#### T10. Stop reasons, events and low disk · M · §4 R3, R9
+
+The recording stops and finalizes, with the matching `stop_reason`, on any of: Reset, a detection-mode change, an interruption, going to the background, or a session error. Tracking-state changes, interruptions and relocalization become `event` rows. Recording also stops when free space falls below `lowDiskBytes` (`low_disk`). The reason mapping and the disk rule are pure logic in PlaneKit (P10).
+
+- [ ] Unit tests cover every stop reason and the low-disk rule.
+- [ ] **Device:** tapping Reset mid-recording leaves a finalized session with `stop_reason = reset`, and its tracking events show as markers in Blender.
+- **Verify:** `swift test`; compile check; device run.
+- **Depends on:** T7.
+- **Files:** `PlaneKit/Sources/PlaneKit/Recording/RecordingPolicy.swift`, `PlaneKit/Tests/PlaneKitTests/Recording/RecordingPolicyTests.swift`, `SidingsAR/Recording/SessionRecorder.swift`, `SidingsAR/ARSessionController.swift`, `SidingsAR/ContentView.swift` (scene phase)
+
+#### T11. ARKit plane anchors and the Mark button · S · E2 input
+
+Anchor callbacks enqueue `add`, `update` and `remove` rows through `ARRecordAdapter`, stamped with the last logged frame. They do nothing else, per the SidingsAR invariant. *(Should)* **Mark** adds an `event` row.
+
+- [ ] Unit test: a `remove` record carries only the anchor id, and the others round-trip every column.
+- [ ] **Device:** a room recording has `plane_anchor` rows, and `planelab info` counts the adds, updates and removes.
+- **Verify:** `swift test`; compile check; device run.
+- **Depends on:** T7.
+- **Files:** `SidingsAR/Recording/{ARRecordAdapter,SessionRecorder}.swift`, `SidingsAR/ARSessionController.swift`, `SidingsAR/HUDView.swift`, `PlaneKit/Tests/PlaneKitTests/Recording/PackingTests.swift`
+
+#### T12. Permissions screen and location logging · M · S5
+
+At launch, while Camera or Location is undecided, a `PermissionsView` shows before the AR view: Camera, then Location While In Use, each with a status row, plus **Open Settings** when one is denied. While recording, a `LocationFeed` (`CLLocationManager`, best accuracy, no distance filter, 1° heading filter) sends `LocationRecord` and `HeadingRecord` rows to the writer. `meta` gets `location_auth` and `location_accuracy`. The logic for which screen to show is pure PlaneKit code (P10).
+
+- [ ] Unit tests: the right screen shows for every combination of camera and location states, and location and heading rows are written and read back.
+- [ ] **Device (S5):** on a fresh install on the iPhone 13, denying Location still lets recording work, with `meta` saying `denied`. Allowing it gives `location` rows at about 1 Hz, plus `heading` rows.
+- **Verify:** `swift test`; compile check; device run.
+- **Depends on:** T7.
+- **Files:** `SidingsAR/Recording/{PermissionsView,LocationFeed}.swift`, `SidingsAR/ContentView.swift`, `PlaneKit/Sources/PlaneKit/Recording/PermissionState.swift` and its tests, `project.pbxproj` (`NSLocationWhenInUseUsageDescription`)
+
+#### T13. Sessions sheet · S · S4
+
+A sheet lists the recordings (date, duration, size, device, read from `meta`), with **Share** (zipped through `NSFileCoordinator` `.forUploading`) and **Delete**. Reading the summary is PlaneKit code, tested on the fixture.
+
+- [ ] Unit test: the fixture's summary (duration, frames, device, size) is correct.
+- [ ] **Device (S4):** a session AirDropped as a zip is read by `planelab info`, and it also shows in the Files app and in Finder.
+- **Verify:** `swift test`; compile check; device run.
+- **Depends on:** T7.
+- **Files:** `SidingsAR/Recording/SessionsView.swift`, `SidingsAR/HUDView.swift`, `PlaneKit/Sources/PlaneKit/Recording/SessionSummary.swift` and its tests
+
+#### Checkpoint 2A: recorder on the device
+
+- [ ] **Device (S1):** 5 minutes on the iPhone 13, with *mem MB* staying within ±50 MB of its value 30 s after Record.
+- [ ] **Device (S2):** ≥ 99 % of frames are logged, ≤ 1 % of images are dropped, and the viewer stays smooth.
+- [ ] **Device (S3):** after a force-quit mid-recording, the session opens up to about 1 s before the kill, and the video plays up to its last fragment.
+- [ ] **Device:** the same checks pass on the iPhone 13 Pro.
+- [ ] S6: `swift test` is green and the compile check is clean.
+- [ ] Findings are in `ARKit_WallDetection/README.md`. **User:** review.
+
+### Phase 2B: Lab core (Python, Mac only; can start right after T6)
+
+#### T14. Synthetic sessions · M · S8 input
+
+`planelab synth` writes the `facade`, `edges` and `room` scenes through a Python writer of the real schema (P7). Each scene has a camera path, features with stable ids, σ noise, outliers and visibility, plus a `synth_truth.json`. There's no video.
+
+- [ ] The reader opens every scene, and the truth lists every planted plane.
+- [ ] The same seed gives identical files, and a different seed gives different ones.
+- [ ] In `edges`, points exist only near corners, trim and openings.
+- **Verify:** `pytest --cov`; `ruff`
+- **Depends on:** T6.
+- **Files:** `PlaneLab/src/planelab/{synth,writer,cli}.py`, `PlaneLab/tests/test_synth.py`
+
+#### T15. `LabConfig` and presets · S · L8
+
+Frozen dataclasses for every §5 setting, TOML load and save with validation, `configs/default.toml` and `configs/recall.toml`, and conversion to key/value rows for `results.sqlite`.
+
+- [ ] Unknown keys and out-of-range values are rejected with an error naming the field.
+- [ ] Saving then loading gives an equal config, and `default.toml` equals the dataclass defaults.
+- **Verify:** `pytest --cov`; `ruff`
+- **Depends on:** T6.
+- **Files:** `PlaneLab/src/planelab/config.py`, `PlaneLab/configs/{default,recall}.toml`, `PlaneLab/tests/test_config.py`
+
+#### T16. Point filter, motion gate and accumulator · M · E3
+
+The near cut, the four gate modes (`off` by default, then `intended`, `upstream` and `parallax`), and the CurvSurf accumulator: a FIFO per id, the z-score filter, `min_samples`, `max_ids` eviction, and each point's sample count and spread. It all runs on preallocated ring buffers (§17.5).
+
+- [ ] Hand-built cases match CurvSurf's behavior, including eviction.
+- [ ] On crafted camera paths, each gate accepts exactly the expected frames or samples, `upstream` included.
+- [ ] 100 000 ids at 100 samples each stay within the memory estimate (test).
+- **Verify:** `pytest --cov`; `ruff`
+- **Depends on:** T14, T15.
+- **Files:** `PlaneLab/src/planelab/{gate,accumulate}.py`, `PlaneLab/tests/{test_gate,test_accumulate}.py`
+
+#### T17. RANSAC plane models · M · S8
+
+Vertical (2-point), horizontal (1-point) and free (3-point) hypotheses, a least-squares refit, the range-scaled inlier distance `τ = τ₀ + k·z²`, and rejection of nearly collinear inliers.
+
+- [ ] Planted planes (σ = 1 cm, 20 % outliers) are found with normal error < 2° and offset error < 2 cm, for each model.
+- [ ] Points along a single line produce no plane.
+- **Verify:** `pytest --cov`; `ruff`
+- **Depends on:** T14, T15.
+- **Files:** `PlaneLab/src/planelab/fit.py`, `PlaneLab/tests/test_fit.py`
+
+#### T18. Sequential search and extents · M · S8
+
+Sequential RANSAC that keeps points within `edge_keep_m` of accepted planes available, and extents as convex hulls of the inliers, split into connected regions.
+
+- [ ] In the `edges` scene, both walls at a shared corner are found, and no plane is fitted to a single edge.
+- [ ] Two separate stretches of one plane give two regions.
+- **Verify:** `pytest --cov`; `ruff`
+- **Depends on:** T17.
+- **Files:** `PlaneLab/src/planelab/{search,hull}.py`, `PlaneLab/tests/{test_search,test_hull}.py`
+
+#### T19. Plane tracker · M · S8
+
+Matching by normal angle, plane distance and overlap; updates by EMA or refit; tentative → confirmed after `confirm_hits`; merges, where the older id survives; stale planes; and `add` / `update` / `merge` / `stale` events.
+
+- [ ] Under per-fit jitter, every planted plane keeps one id with zero switches.
+- [ ] Merge and stale unit cases pass. A recessed opening 10 cm behind the wall stays separate. One 5 cm behind merges at the default 8 cm merge distance and stays separate at 4 cm, which documents the trade in §5.3.
+- **Verify:** `pytest --cov`; `ruff`
+- **Depends on:** T18.
+- **Files:** `PlaneLab/src/planelab/track.py`, `PlaneLab/tests/test_track.py`
+
+#### T20. Pipeline, results store, `run` and `export` · M · S9
+
+The whole pipeline over a session, writing:
+- `lab/<run>/results.sqlite`, with a `config` table (L8), the per-frame readouts (§5.4), our planes and their events, and snapshots of the averaged cloud (P12)
+- a copy of `config.toml`
+
+Also adds `run --progress` (JSON lines) and `export --csv`.
+
+- [ ] Two runs with the same config and seed give identical results.
+- [ ] A 2-minute synthetic session runs in < 60 s on the Mac Studio (S9), and every `LabConfig` field is in the `config` table.
+- [ ] `run` finishes on the T7 real recording, and `export` writes a CSV.
+- **Verify:** `pytest --cov=planelab --cov-fail-under=85`; `ruff`; timing on the Mac Studio.
+- **Depends on:** T16, T19.
+- **Files:** `PlaneLab/src/planelab/{pipeline,results,cli}.py`, `PlaneLab/tests/{test_pipeline,test_results}.py`
+
+#### Checkpoint 2B: lab core
+
+- [ ] S7 (the Python side), S8 and S9 are green, coverage is ≥ 85 %, and `ruff` is clean.
+- [ ] **User:** review of a `planelab run` CSV from the real recording.
+
+### Phase 3: Blender complete
+
+#### T21. Result layers and per-frame readouts · M · S12
+
+Layers for:
+- the averaged cloud, colored by sample count
+- our planes, colored by track id: tentative planes lighter, stale ones grey, with labels showing id, age, inliers and RMS
+- ARKit's planes, in SidingsAR colors
+
+The panel shows the per-frame readouts. The frame handler reads cached arrays loaded from `results.sqlite`.
+
+- [ ] Headless: at sampled frames, vertex and plane counts match `results.sqlite`.
+- [ ] Headless: on a 2-minute synthetic run, a frame change updates every layer in ≤ 100 ms (S12).
+- **Verify:** the Blender headless suite.
+- **Depends on:** T9, T20.
+- **Files:** `PlaneLab/blender/planelab_blender/{layers,panel,results_cache}.py`, `PlaneLab/tests/blender/smoke_layers.py`
+
+#### T22. Settings panel and Recompute · M · S13
+
+Panel properties generated from `LabConfig`, TOML load and save, and **Recompute**:
+- `sys.executable -m planelab run … --progress` runs in a subprocess with `PYTHONPATH` set (P6)
+- a modal timer shows progress, and **Cancel** stops the run
+- the new run loads without a restart
+- *(Should)* a run picker
+
+- [ ] Headless: Recompute on a synthetic session finishes, and the new run is listed and shown.
+- [ ] Headless: Cancel ends the process within 1 s.
+- [ ] **User (S13):** on a real recording, the UI stays responsive during Recompute.
+- **Verify:** the Blender headless suite; the user's check.
+- **Depends on:** T21.
+- **Files:** `PlaneLab/blender/planelab_blender/{settings,recompute_op,panel}.py`, `PlaneLab/tests/blender/smoke_recompute.py`
+
+#### T23. The remaining operators · S · S10
+
+*File › New › Plane Lab Synthetic Session*, **Export CSV**, the add-on preferences (sessions folder) and, as a *(Should)*, a session browser. One headless test drives every `bpy.ops.planelab.*` operator in sequence.
+
+- [ ] The all-operators headless test passes (S10).
+- **Verify:** the Blender headless suite.
+- **Depends on:** T14, T22.
+- **Files:** `PlaneLab/blender/planelab_blender/{synth_op,export_op,prefs}.py`, `PlaneLab/tests/blender/smoke_all_ops.py`
+
+#### Checkpoint 3: Blender
+
+- [ ] S10–S13 are met, and the Blender headless suite is green.
+- [ ] **User:** a real session reviewed end to end in Blender: import, scrub, Recompute and export.
+
+### Phase 4: Field work and docs
+
+#### T24. Field session 1: the `BUILDING_SAMPLE.png` building · E2, E3 · S14 (part)
+
+The user records the building from under 5 m on the iPhone 13, then on the 13 Pro. In Blender:
+- **E2:** for each wall, the first frame with an ARKit plane, compared with our first frame.
+- The upper-storey points, 8–10 m up.
+- **E3:** all four gate modes and `recall.toml`, compared.
+
+- [ ] **User:** E2 per wall and the upper points confirmed by eye.
+- [ ] Findings are in `CONSOLIDATION.md` §10b, and `recall.toml` is updated.
+- **Depends on:** Checkpoint 3.
+
+#### T25. Field session 2: the open-standoff site · E1 · S14 (part)
+
+The user picks the site (L10) and records from 10–15 m and farther on the iPhone 13. The per-frame point-range p50 / p95 / max show whether points reach past ~10 m.
+
+- [ ] **User:** the range percentiles are read in Blender, and the ~65 m claim is confirmed or not.
+- [ ] Findings are in `CONSOLIDATION.md` §10b.
+- **Depends on:** Checkpoint 3.
+
+#### T26. Docs pass · S
+
+`ARKit_WallDetection/README.md` and `CLAUDE.md` (the recorder, the PlaneKit rule, the adapter rule from P13), `PlaneLab/README.md` (new), the root `README.md` and `CLAUDE.md`, and this spec's status. It can run alongside T24 and T25.
+
+- [ ] Every doc listed under §13 *Docs* describes the current state.
+- **Depends on:** T23.
+
+#### Final checkpoint
+
+- [ ] S1–S14 are met, with device and field items confirmed by the user.
+- [ ] `swift test`, the compile check, `pytest` (≥ 85 %), `ruff` and the Blender headless suite are green.
+- [ ] **User:** sign-off. The next step, porting the chosen config to PlaneKit (L1), becomes a new request.
