@@ -21,7 +21,7 @@ planelab = ["py.typed"]
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-extend-exclude = ["blender"]
+extend-exclude = ["blender/planelab_blender/vendor"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "N", "ANN", "RUF", "PTH", "T20"]
@@ -31,6 +31,9 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "N", "ANN", "RUF", "PTH", "T20"]
 "src/planelab/cli.py" = ["T20"]
 "spikes/*" = ["T20"]
 "tests/*" = ["ANN201", "ANN001"]
+# Blender naming (PLANELAB_OT_*) and the vendor sys.path insert before imports.
+"blender/*" = ["N801", "RUF012"]
+"tests/blender/*" = ["T20"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

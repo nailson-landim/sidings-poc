@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "planelab_blender"
+version = "0.1.0"
+name = "Plane Lab"
+tagline = "Replay SidingsAR recordings and fit planes on the timeline"
+maintainer = "sidings_poc"
+type = "add-on"
+blender_version_min = "5.0.0"
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+files = "Read Plane Lab recordings and write lab results next to them"
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "*.pyc", ".*"]

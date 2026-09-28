@@ -2,7 +2,7 @@
 
 Replay SidingsAR recordings on the Mac and fit planes offline: *accumulate → fit → track*, driven from Blender or the command line. The spec, plan and tasks live in [`../SPEC.md`](../SPEC.md); this README covers what exists so far.
 
-**Status (2026-09-28):** the session reader, `planelab info` (T6) and `planelab peek` work. The pipeline, the synthetic sessions and the Blender extension come next (SPEC §18, T8 onward).
+**Status (2026-09-28):** the session reader, `planelab info` (T6), `planelab peek`, and the Blender import of the camera path and raw points (T8) work. The pipeline, the synthetic sessions and the Blender extension come next (SPEC §18, T8 onward).
 
 ## Setup
 
@@ -63,6 +63,24 @@ events    6
 
 *fps delivered* comes from the frame times, not from ARKit's promised format. The iPhone 13 has delivered 30 Hz against a promised 60 (SPEC §3.4, §15 R1). *points* is the distance from the camera to every raw feature point (E1).
 
+## Blender extension
+
+`blender/planelab_blender/` is a Blender 5 extension. **File › Import › Plane Lab Session** takes the `session.sqlite` inside a `.planelab` folder, the folder itself, or a zip of it, and builds one collection per recording:
+- **Camera:** its pose is keyframed on every frame, converted from ARKit's +Y-up world to Blender's +Z-up world (`planelab.axes`). Lens and principal-point shift are also keyframed on every frame, because the intrinsics drift with autofocus.
+- **Trail:** a static polyline of the whole camera path.
+- **Raw points:** the current frame's feature points (yellow). A frame-change handler refills them from arrays cached per recording; nothing else is keyframed.
+- **Scene:** the frame range is 1 … frames (Blender frame = `idx + 1`), fps is the rate ARKit actually delivered, and the resolution is the captured image's. Session events become timeline markers named `PL …`.
+
+Importing the same recording again replaces it. The user's 48 s recording (2,863 frames) imports in about 0.05 s, and changing frames refreshes the points in about 0.1 ms, measured headless.
+
+```bash
+./scripts/build_extension.sh                 # -> dist/planelab_blender-<version>.zip, with the core copied in
+```
+
+Install that zip with **Blender › Settings › Get Extensions › ⌄ › Install from Disk**. For development, a local repository pointing at `PlaneLab/blender/` loads the source directly, so *Reload Scripts* picks up edits. In the repository, `vendor/planelab` is a symlink to `src/planelab`, and the build script copies the real files into the zip (SPEC §17.4 P6).
+
+`tests/test_blender.py` runs the real Blender headless. It imports the contract fixture and checks the camera pose, lens and points against the core's own conversion. It also builds the zip and installs it into a throwaway Blender profile. It's skipped when Blender isn't installed.
+
 ## Reading sessions in code
 
 ```python
@@ -87,17 +105,21 @@ PlaneLab/
 │   ├── session.py    reader: folders and zips, version check, BLOB decoding
 │   ├── info.py       the summary behind `planelab info` and the Blender panel
 │   ├── peek.py       `planelab peek`: the decoded, documented copy of a recording
+│   ├── axes.py       ARKit → Blender: world axes, lens and shift from intrinsics, quaternions
+│   ├── replay.py     packed per-frame arrays behind the Blender timeline
 │   ├── cli.py        python -m planelab
 │   └── log.py        silent rotating log file, plus stderr for the CLI
+├── blender/planelab_blender/  the extension: manifest, import operator, scene build, frame handler; vendor/planelab → src/planelab
+├── scripts/build_extension.sh the zip, with the core copied in
 ├── spikes/           R2 Blender video spike (see spikes/README.md)
-└── tests/            pytest: the contract (same fixture as Swift), reader edge cases, CLI
+└── tests/            pytest: the contract (same fixture as Swift), reader, peek, axes, replay, CLI; test_blender.py drives headless Blender
 ```
 
 ## Checks
 
 ```bash
 ruff check . && ruff format --check .
-pytest --cov=planelab --cov-fail-under=85     # 39 tests, 98 % coverage
+pytest --cov=planelab --cov-fail-under=85     # 61 tests incl. 2 headless-Blender tests, 99 % coverage
 ```
 
 The contract test reads `../session-format/fixtures/v1/`, written by the Swift recorder, and compares every table with `expected.json` (SPEC S7). The core also runs under Blender's own interpreter:

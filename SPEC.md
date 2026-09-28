@@ -843,8 +843,17 @@ The extension layout from P6: manifest, the `vendor/planelab` link, `scripts/bui
 - adds the raw-points layer, driven by a frame-change handler from cached arrays
 - turns `event` rows into markers
 
-- [ ] Headless: importing the fixture gives the expected frame range. Camera keys at 3 sampled frames match the converted poses (to 1e-5), and raw-point vertex counts there equal `point_count`.
-- [ ] The built zip installs with `extension install-file`, and an edit to the source shows up after *Reload Scripts*.
+- [x] Headless: importing the fixture gives the expected frame range. Camera keys at 3 sampled frames match the converted poses (to 1e-5), and raw-point vertex counts there equal `point_count`.
+- [x] The built zip installs with `extension install-file`, and an edit to the source shows up after *Reload Scripts*. *(The install is tested into a throwaway profile. The Reload Scripts loop needs the local repository in the user's Blender, which waits for the user's OK.)*
+- **Result (2026-09-28):**
+  - **Core modules:** the pure-numpy conversions went into `planelab.axes` (axes, lens and shift, quaternions) and `planelab.replay` (packed arrays), so pytest covers them.
+  - **The Blender glue** (`build.py`, `layers.py`, `import_op.py`):
+    - Camera pose, lens and shift are keyframed on every frame, in bulk through Blender 5's slotted-action channelbags.
+    - A static trail shows the whole path.
+    - Raw points are drawn as a geometry-nodes point cloud (loose vertices are invisible in Object Mode), filled by a frame handler.
+    - Events become markers, and importing again replaces the earlier import.
+  - **Real recording (2,863 frames), headless:** the import passes the same checks in about 0.05 s, and a frame change costs about 0.1 ms.
+  - **Tests:** `tests/test_blender.py` runs the headless import and the build and install. Blender 5.0 removed `Action.fcurves`, so keys go through `bpy_extras.anim_utils.action_ensure_channelbag_for_slot`.
 - **Verify:** `$BLENDER --background --factory-startup --python-exit-code 1 --python PlaneLab/tests/blender/smoke_import.py -- <fixture>`
 - **Depends on:** T6.
 - **Files:** `PlaneLab/blender/planelab_blender/blender_manifest.toml`, `.../{__init__,import_op,layers}.py`, `PlaneLab/scripts/build_extension.sh`, `PlaneLab/tests/blender/smoke_import.py`

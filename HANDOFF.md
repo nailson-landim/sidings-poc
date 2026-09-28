@@ -22,7 +22,8 @@ Paste this into a new session:
 | T5 Session writer | Done | `8686b42` |
 | T6 Python package, reader, `planelab info` | Done | `08f55cb` |
 | T7 Record/Stop in SidingsAR | Done. The user's recording `20260928-160746`: 2,863 frames at 60 Hz, 0 dropped, 0.24 % without an image | `e90e034` + docs commit |
-| T8–T26 | Not started | — |
+| T8 Blender extension and import (camera, trail, raw points) | Done (headless). The Reload Scripts dev loop waits for the user's OK to add a local repository | this commit |
+| T9–T26 | Not started | — |
 
 The checks were green at `e90e034`:
 - `swift test`: 68 tests in 10 suites.
@@ -37,7 +38,7 @@ The checks were green at `e90e034`:
 ## Next steps for Claude
 
 In order:
-1. **T8: Blender extension and import (camera and raw points).**
+1. ~~**T8: Blender extension and import (camera and raw points).**~~ Done.
    - Build the P6 layout: `PlaneLab/blender/planelab_blender/`, with `vendor/planelab` as a symlink to `src/planelab`.
    - Write `scripts/build_extension.sh`, which copies the real core into a staging folder and builds the zip.
    - Set up the local-repository dev loop.
