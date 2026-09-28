@@ -669,6 +669,7 @@ Minor decisions made while planning, under the user's "minor decisions I trust y
 | P14 | **Commits** (user, 2026-09-28): one commit per task once its checks are green, with the attribution trailer, without asking each time. Never push, never commit recordings. | User's choice |
 | P15 | **`planelab peek`** (user request, 2026-09-28: "a table on the sqlite file to peek the data, structured so I can catch all details"): it writes `<bundle>/lab/peek.sqlite` with every BLOB decoded into columns, enums as words, per-point and per-feature tables, and an `_about` table explaining every column (a test enforces that). It's a separate file because recordings are immutable (§3.2). | The user needs to see raw data before the Blender import exists |
 | P16 | **`planelab blend`** (2026-09-28, after the user asked for the Blender file of a new recording): it runs Blender headless with `scripts/replay_blend.py` and saves `<bundle>/lab/replay.blend`, the import in an empty scene that opens in camera view. Blender comes from `--blender`, then `$BLENDER`, then the default app path. It works from a repository checkout. | A new recording goes to Blender in one command |
+| P17 | **ARKit planes layer brought forward from T21** (2026-09-28, the user's "hold our horses"): the Blender import adds an *ARKit planes* mesh that the frame handler fills with every live anchor's boundary polygon, in SidingsAR's colors at 35 % opacity. `planelab.planes.PlaneTimeline` shows each anchor's latest add or update until its remove. T21 keeps the rest of its layers (averaged cloud, our planes, readouts). | The user wanted ARKit's planes next to the points now |
 
 ### 17.5 Risks found while planning
 
@@ -895,7 +896,12 @@ The recording stops and finalizes, with the matching `stop_reason`, on any of: R
 
 Anchor callbacks enqueue `add`, `update` and `remove` rows through `ARRecordAdapter`, stamped with the last logged frame. They do nothing else, per the SidingsAR invariant. *(Should)* **Mark** adds an `event` row.
 
-- [ ] Unit test: a `remove` record carries only the anchor id, and the others round-trip every column.
+- [x] Unit test: a `remove` record carries only the anchor id, and the others round-trip every column.
+- **Code (2026-09-28, brought forward at the user's request).** The user saw planes in the app but `info` said `0 ARKit planes`, because T7 recorded frames and video only.
+  - The anchor callbacks now queue rows (they still only record).
+  - Planes that exist when recording starts are logged as `add` at frame 0.
+  - The Mark button is in.
+  - Blender shows ARKit's planes (P17).
 - [ ] **Device:** a room recording has `plane_anchor` rows, and `planelab info` counts the adds, updates and removes.
 - **Verify:** `swift test`; compile check; device run.
 - **Depends on:** T7.

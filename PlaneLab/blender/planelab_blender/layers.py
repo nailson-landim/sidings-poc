@@ -1,8 +1,9 @@
-"""Layers that follow the current frame (SPEC.md §6): a frame-change handler refills each layer's mesh from arrays
+"""Layers that follow the current frame (SPEC.md §6): a frame-change handler refills each layer's mesh from data
 cached per recording. Nothing but the camera is keyframed, so scrubbing costs one slice and one mesh write per layer.
 """
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 import bpy
@@ -10,30 +11,38 @@ import numpy as np
 from bpy.app.handlers import persistent
 
 from planelab.axes import points_to_blender
+from planelab.planes import PlaneTimeline, boundary_world
 from planelab.replay import Replay, load_replay
 from planelab.session import SessionError, open_session
 
-from .build import LAYER_KEY, RAW_POINTS, SESSION_KEY
+from .build import ARKIT_PLANES, LAYER_KEY, RAW_POINTS, SESSION_KEY, plane_material_slot
 
 log = logging.getLogger(__name__)
 
-_replays: dict[str, Replay] = {}
+
+@dataclass(slots=True, frozen=True)
+class Loaded:
+    replay: Replay
+    planes: PlaneTimeline
 
 
-def remember(bundle: Path, replay: Replay) -> None:
-    _replays[str(bundle)] = replay
+_sessions: dict[str, Loaded] = {}
 
 
-def replay_for(bundle: str) -> Replay | None:
-    """The cached arrays of a recording, loaded from disk the first time (for example after opening a .blend)."""
-    if bundle not in _replays:
+def remember(bundle: Path, replay: Replay, planes: PlaneTimeline) -> None:
+    _sessions[str(bundle)] = Loaded(replay, planes)
+
+
+def loaded(bundle: str) -> Loaded | None:
+    """The cached data of a recording, read from disk the first time (for example after opening a .blend)."""
+    if bundle not in _sessions:
         try:
             with open_session(Path(bundle)) as session:
-                _replays[bundle] = load_replay(session)
+                _sessions[bundle] = Loaded(load_replay(session), PlaneTimeline(session.anchors()))
         except SessionError as error:
             log.warning("layer source unavailable: %s", error)
             return None
-    return _replays[bundle]
+    return _sessions[bundle]
 
 
 def set_vertices(mesh: bpy.types.Mesh, points: np.ndarray) -> None:
@@ -44,14 +53,38 @@ def set_vertices(mesh: bpy.types.Mesh, points: np.ndarray) -> None:
     mesh.update()
 
 
+def set_planes(mesh: bpy.types.Mesh, timeline: PlaneTimeline, idx: int) -> None:
+    """One polygon per ARKit plane alive at ``idx``, colored by classification."""
+    polygons = []
+    slots = []
+    for anchor in timeline.at(idx):
+        boundary = boundary_world(anchor)
+        if len(boundary) >= 3:
+            polygons.append(points_to_blender(boundary))
+            slots.append(plane_material_slot(anchor.classification, anchor.alignment))
+    mesh.clear_geometry()
+    if polygons:
+        vertices = np.concatenate(polygons)
+        starts = np.cumsum([0] + [len(p) for p in polygons[:-1]])
+        faces = [list(range(start, start + len(p))) for start, p in zip(starts, polygons, strict=True)]
+        mesh.from_pydata(vertices.tolist(), [], faces)
+        mesh.polygons.foreach_set("material_index", slots)
+    mesh.update()
+
+
 def update_layers(scene: bpy.types.Scene) -> None:
     idx = scene.frame_current - 1
     for obj in scene.objects:
-        if obj.get(LAYER_KEY) != RAW_POINTS or obj.type != "MESH":
+        layer = obj.get(LAYER_KEY)
+        if layer not in (RAW_POINTS, ARKIT_PLANES) or obj.type != "MESH":
             continue
-        replay = replay_for(obj[SESSION_KEY])
-        if replay is not None:
-            set_vertices(obj.data, points_to_blender(replay.points_at(idx)))
+        data = loaded(obj[SESSION_KEY])
+        if data is None:
+            continue
+        if layer == RAW_POINTS:
+            set_vertices(obj.data, points_to_blender(data.replay.points_at(idx)))
+        else:
+            set_planes(obj.data, data.planes, idx)
 
 
 @persistent
@@ -61,7 +94,7 @@ def on_frame_change(scene: bpy.types.Scene, *_: object) -> None:
 
 @persistent
 def on_load(*_: object) -> None:
-    _replays.clear()
+    _sessions.clear()
 
 
 def register() -> None:
@@ -78,4 +111,4 @@ def unregister() -> None:
     ):
         while handler in handlers:
             handlers.remove(handler)
-    _replays.clear()
+    _sessions.clear()

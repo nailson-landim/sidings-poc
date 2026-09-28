@@ -116,6 +116,8 @@ The gap between the origin and the center shows that ARKit anchors a plane where
   - While recording, a red row shows seconds, frames logged, frames dropped (write queue full), frames without an image (pool busy), MB written and free GB.
   - After Stop, one line reports what was saved.
   - Reset, a detection-mode change, pausing, an interruption or a session error stop and save the recording first, with the reason in `meta.stop_reason`.
+  - ARKit's plane anchors are recorded too: every add, update and remove callback, stamped with the frame. Planes that already exist when Record is tapped are logged as added at frame 0.
+  - **Mark** (flag, while recording) adds a `mark N` event, which becomes a timeline marker in Blender.
   - Get sessions onto the Mac with `devicectl` (see `CLAUDE.md`), then run `python -m planelab info <bundle>` (`../PlaneLab/`).
 - **Reset:** clears all anchors and tracker state, and restarts tracking.
 

@@ -25,7 +25,8 @@ Paste this into a new session:
 | T8 Blender extension and import (camera, trail, raw points) | Done (headless). The Reload Scripts dev loop waits for the user's OK to add a local repository | this commit |
 | T9 Video behind the camera | Done, S11 confirmed by the user | `f788539` |
 | Checkpoint 1 | **Passed** (user, 2026-09-28): S11 holds, points sit on the video. The user linked `PlaneLab/blender/` as a local extension repository | — |
-| T10–T26 | Not started | — |
+| T11 ARKit anchors + Mark | Code done (the user's request, ahead of T10). **Device check open:** record with planes visible, then `info` shows anchors and Blender shows them | this commit |
+| T10, T12–T26 | Not started. T21's ARKit-planes layer is already done (P17) | — |
 
 The checks were green at `e90e034`:
 - `swift test`: 68 tests in 10 suites.

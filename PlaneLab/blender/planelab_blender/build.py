@@ -16,6 +16,21 @@ from planelab.session import Event
 SESSION_KEY = "planelab_session"
 LAYER_KEY = "planelab_layer"
 RAW_POINTS = "raw_points"
+ARKIT_PLANES = "arkit_planes"
+PLANE_ALPHA = 0.35
+# SidingsAR's plane colors (PlaneStyle.swift), by material slot. Slots 0-7 follow ARKit's classification codes
+# (slot 0 is an unclassified horizontal plane); slot 8 is an unclassified vertical plane.
+PLANE_MATERIALS: list[tuple[str, tuple[float, float, float]]] = [
+    ("none (horizontal)", (1.0, 1.0, 1.0)),
+    ("wall", (0.0, 1.0, 1.0)),
+    ("floor", (0.0, 1.0, 0.0)),
+    ("ceiling", (1.0, 1.0, 0.0)),
+    ("table", (1.0, 0.5, 0.0)),
+    ("seat", (1.0, 0.5, 0.0)),
+    ("window", (0.5, 0.0, 0.5)),
+    ("door", (0.5, 0.0, 0.5)),
+    ("none (vertical)", (0.0, 1.0, 1.0)),
+]
 MARKER_PREFIX = "PL "
 POINT_DISPLAY = "PlaneLab point display"
 RAW_POINT_COLOR = (1.0, 0.85, 0.1, 1.0)
@@ -39,6 +54,7 @@ def build_session(scene: bpy.types.Scene, bundle: Path, replay: Replay, events: 
     add_video(camera, bundle, replay)
     add_trail(collection, name, replay)
     add_raw_points(collection, name, bundle)
+    add_arkit_planes(collection, name, bundle)
     add_markers(scene, events)
     scene.camera = camera
     scene.frame_set(1)
@@ -154,6 +170,30 @@ def add_raw_points(collection: bpy.types.Collection, name: str, bundle: Path) ->
     material.diffuse_color = RAW_POINT_COLOR
     show_as_points(points, material, RAW_POINT_RADIUS_M)
     return points
+
+
+def add_arkit_planes(collection: bpy.types.Collection, name: str, bundle: Path) -> bpy.types.Object:
+    """An empty mesh that the frame handler fills with ARKit's planes as they were at the current frame."""
+    mesh = bpy.data.meshes.new(f"{name} ARKit planes")
+    for label, rgb in PLANE_MATERIALS:
+        material_name = f"PlaneLab ARKit {label}"
+        material = bpy.data.materials.get(material_name) or bpy.data.materials.new(material_name)
+        material.diffuse_color = (*rgb, PLANE_ALPHA)
+        mesh.materials.append(material)
+    planes = bpy.data.objects.new(f"{name} ARKit planes", mesh)
+    planes[LAYER_KEY] = ARKIT_PLANES
+    planes[SESSION_KEY] = str(bundle)
+    planes.show_transparent = True
+    collection.objects.link(planes)
+    return planes
+
+
+def plane_material_slot(classification: int | None, alignment: int | None) -> int:
+    """Slot in ``PLANE_MATERIALS``: the classification code, or 8 for an unclassified vertical plane."""
+    code = classification or 0
+    if code == 0 and alignment == 1:
+        return len(PLANE_MATERIALS) - 1
+    return code if 0 <= code < len(PLANE_MATERIALS) - 1 else 0
 
 
 def show_as_points(obj: bpy.types.Object, material: bpy.types.Material, radius: float) -> None:

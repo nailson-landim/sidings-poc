@@ -15,8 +15,10 @@ PLANELAB = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PLANELAB / "blender"))
 
 import planelab_blender  # noqa: E402
+from planelab_blender.build import plane_material_slot  # noqa: E402
 
 from planelab.axes import lens_from_intrinsics, points_to_blender, pose_to_blender  # noqa: E402
+from planelab.planes import PlaneTimeline, boundary_world  # noqa: E402
 from planelab.replay import load_replay  # noqa: E402
 from planelab.session import open_session  # noqa: E402
 
@@ -90,6 +92,30 @@ def check_video(scene: bpy.types.Scene, camera: bpy.types.Object, replay: object
     print(f"VIDEO OK {shown}")
 
 
+def check_arkit_planes(scene: bpy.types.Scene, name: str, bundle: Path) -> None:
+    """ARKit's planes as they were at each frame: one colored polygon per live anchor (SPEC.md §6)."""
+    with open_session(bundle) as session:
+        timeline = PlaneTimeline(session.anchors())
+        frames = session.frame_count()
+    planes = bpy.data.objects[f"{name} ARKit planes"]
+    for idx in sorted({0, 1, 2, 5, 6, 8, frames // 2, frames - 1}):
+        if idx >= frames:
+            continue
+        scene.frame_set(idx + 1)
+        alive = [a for a in timeline.at(idx) if len(boundary_world(a)) >= 3]
+        check(
+            len(planes.data.polygons) == len(alive),
+            f"{len(planes.data.polygons)} planes at idx {idx}, not {len(alive)}",
+        )
+        if alive:
+            expected = points_to_blender(boundary_world(alive[0]))
+            first = planes.data.polygons[0]
+            actual = np.array([planes.data.vertices[v].co[:] for v in first.vertices])
+            check(np.allclose(actual, expected, atol=1e-5), f"plane outline at idx {idx}")
+            check(first.material_index == plane_material_slot(alive[0].classification, alive[0].alignment), "color")
+    print(f"PLANES OK ({len(timeline)} anchors)")
+
+
 def main(bundle: Path) -> None:
     planelab_blender.register()
     with open_session(bundle) as session:
@@ -128,6 +154,7 @@ def main(bundle: Path) -> None:
 
     check(len(trail.data.vertices) == len(replay) and len(trail.data.edges) == len(replay) - 1, "trail")
     check_video(scene, camera, replay, bundle)
+    check_arkit_planes(scene, name, bundle)
     markers = sorted((m.frame, m.name) for m in scene.timeline_markers)
     check(markers == sorted((e.frame_idx + 1, f"PL {e.kind} {e.detail}") for e in events), f"markers {markers}")
 

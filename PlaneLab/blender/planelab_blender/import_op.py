@@ -7,6 +7,7 @@ import bpy
 from bpy.props import StringProperty
 from bpy_extras.io_utils import ImportHelper
 
+from planelab.planes import PlaneTimeline
 from planelab.replay import load_replay
 from planelab.session import SessionError, open_session
 
@@ -37,14 +38,15 @@ class PLANELAB_OT_import_session(bpy.types.Operator, ImportHelper):
         try:
             with open_session(bundle_from(Path(self.filepath))) as session:
                 replay = load_replay(session)
+                planes = PlaneTimeline(session.anchors())
                 events = session.events()
                 bundle = session.bundle
         except SessionError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
-        layers.remember(bundle, replay)
+        layers.remember(bundle, replay, planes)
         build_session(context.scene, bundle, replay, events)
-        message = f"Imported {bundle.name}: {len(replay)} frames at {replay.fps} fps"
+        message = f"Imported {bundle.name}: {len(replay)} frames at {replay.fps} fps, {len(planes)} ARKit planes"
         log.info(message)
         self.report({"INFO"}, message)
         return {"FINISHED"}

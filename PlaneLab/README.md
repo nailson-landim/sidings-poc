@@ -70,6 +70,7 @@ events    6
 - **Camera:** its pose is keyframed on every frame, converted from ARKit's +Y-up world to Blender's +Z-up world (`planelab.axes`). Lens and principal-point shift are also keyframed on every frame, because the intrinsics drift with autofocus.
 - **Trail:** a static polyline of the whole camera path.
 - **Video:** `video.mov` is the camera's background. The clip starts at `1 + first frame with an image`, because Blender drops a leading gap in the file but keeps later ones, holding the previous image (SPEC §15 R2). Looking through the camera shows the image with the points on top.
+- **ARKit planes:** every plane anchor alive at the current frame, as its boundary polygon in SidingsAR's colors (wall cyan, floor green, ceiling yellow, table/seat orange, door/window purple), 35 % opaque. It comes from the recorded add/update/remove callbacks (`planelab.planes`). Recordings made before T11 (2026-09-28) have no anchors.
 - **Raw points:** the current frame's feature points (yellow). A frame-change handler refills them from arrays cached per recording; nothing else is keyframed.
 - **Scene:** the frame range is 1 … frames (Blender frame = `idx + 1`), fps is the rate ARKit actually delivered, and the resolution is the captured image's. Session events become timeline markers named `PL …`.
 
@@ -113,6 +114,7 @@ PlaneLab/
 │   ├── peek.py       `planelab peek`: the decoded, documented copy of a recording
 │   ├── axes.py       ARKit → Blender: world axes, lens and shift from intrinsics, quaternions
 │   ├── replay.py     packed per-frame arrays behind the Blender timeline
+│   ├── planes.py     ARKit's planes over time: live anchors per frame, boundaries in world coordinates
 │   ├── cli.py        python -m planelab
 │   └── log.py        silent rotating log file, plus stderr for the CLI
 ├── blender/planelab_blender/  the extension: manifest, import operator, scene build, frame handler; vendor/planelab → src/planelab
