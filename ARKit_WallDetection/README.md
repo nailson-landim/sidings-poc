@@ -115,7 +115,9 @@ The gap between the origin and the center shows that ARKit anchors a plane where
 - **Record / Stop (red):** records a Plane Lab session (`../SPEC.md` §4) into `Documents/Sessions/<yyyyMMdd-HHmmss>.planelab/`: `session.sqlite` (pose, intrinsics, raw feature points and ids for every frame, plus `meta`) and `video.mov` (HEVC, one image per frame). The viewer keeps running.
   - While recording, a red row shows seconds, frames logged, frames dropped (write queue full), frames without an image (pool busy), MB written and free GB.
   - After Stop, one line reports what was saved.
-  - Reset, a detection-mode change, pausing, an interruption or a session error stop and save the recording first, with the reason in `meta.stop_reason`.
+  - Reset, a detection-mode change, pausing, going to the background, an interruption, a session error or free space under 1 GB stop and save the recording first, with the reason in `meta.stop_reason` (`StopReason`).
+  - Events are recorded too: the tracking state at the start and every change on its frame (relocalization included), and the first frame of each run of frames without an image, with its reason (`no_buffer` or the encoder's). The counts per reason go to `meta.image_skip.*`, and `planelab info` prints them.
+  - The 6-buffer pixel pool is allocated when Record is tapped (T10). Earlier recordings, with 4 buffers allocated during capture, lost images at frames 5–9.
   - ARKit's plane anchors are recorded too: every add, update and remove callback, stamped with the frame. Planes that already exist when Record is tapped are logged as added at frame 0.
   - **Mark** (flag, while recording) adds a `mark N` event, which becomes a timeline marker in Blender.
   - Get sessions onto the Mac with `devicectl` (see `CLAUDE.md`), then run `python -m planelab info <bundle>` (`../PlaneLab/`).
@@ -252,6 +254,7 @@ ARKit_WallDetection/
 │   │   └── Recording/              Plane Lab recorder (../SPEC.md §4), being built
 │   │       ├── Constants.swift     RecorderConstants: every recorder setting, written to each session's meta
 │   │       ├── Records.swift       FrameRecord, AnchorRecord, LocationRecord, HeadingRecord, EventRecord
+│   │       ├── RecordingPolicy.swift  StopReason, DiskGuard, TrackingChangeDetector, ImageSkipLog
 │   │       ├── Packing.swift       Little-endian BLOB layouts (matrices, points, ids) with no simd padding
 │   │       ├── SessionDatabase.swift  session.sqlite: schema v1 (copy of ../session-format/schema_v1.sql), WAL, seal
 │   │       ├── SessionWriter.swift    One recording bundle off the capture thread: batched commits, frame drops, finish
@@ -263,7 +266,7 @@ ARKit_WallDetection/
 
 ## Testing
 
-`cd PlaneKit && swift test` runs 68 Swift Testing cases in 10 suites:
+`cd PlaneKit && swift test` runs 75 Swift Testing cases in 11 suites:
 
 | Suite | Covers |
 |---|---|
@@ -272,6 +275,7 @@ ARKit_WallDetection/
 | Smoothing & hysteresis | EMA convergence and jump reset, winner stable under ±5% jitter, challenger takeover after the streak, a weak challenger never winning |
 | Render budget | Throttle, RebuildGate (first build, unchanged geometry, deferred change, area delta), octahedra counts, index range and outward winding, subsampling |
 | Recorder constants | Every `RecorderConstants` property becomes one `const.*` meta row |
+| Recording policy | `StopReason` values match the spec, the low-disk rule, tracking events at the start and on change only, image skips counted per frame and reported once per burst |
 | BLOB packing | Column-major little-endian matrices (64 and 36 bytes), 12-byte points, uint64 ids, empty arrays, wrong sizes rejected |
 | Session database | Every table round-trips, a sealed session is one file, empty point BLOBs aren't NULL, mismatched points/ids refused, unknown `schema_version` refused |
 | Session writer | Batched commits (manual and timer), frame numbers with no holes, a stalled queue dropping whole frames in under 50 ms without blocking, committed batches surviving an unfinished session, finish writing counters and a matching video into a one-file bundle, nothing accepted after finish |

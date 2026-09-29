@@ -28,7 +28,8 @@ Paste this into a new session:
 | T9 Video behind the camera | Done, S11 confirmed by the user | `f788539` |
 | Checkpoint 1 | **Passed** (user, 2026-09-28): S11 holds, points sit on the video. The user linked `PlaneLab/blender/` as a local extension repository | — |
 | T11 ARKit anchors + Mark | Done, device-checked on 2026-09-28 (`20260928-181436`: 2 planes, 373 anchor rows; "flawless"). Mark not yet tapped on a device | `32fb327`, `12a525c` |
-| T10, T12–T26 | Not started. T21's ARKit-planes layer is already done (P17) | — |
+| T10 Stop reasons, events, low disk, startup images | **Code done (2026-09-29). Device check open:** record, tap Reset mid-recording, then `info` shows `stop: reset` and the "no image" breakdown, and Blender shows tracking markers | `f48458f` |
+| T12–T26 | Not started. T21's ARKit-planes layer is already done (P17) | — |
 
 The checks were green at `e90e034`:
 - `swift test`: 68 tests in 10 suites.
