@@ -120,3 +120,13 @@ def test_blend_reports_a_failing_blender(tmp_path: Path, capsys: pytest.CaptureF
     fake.chmod(0o755)
     assert main(["blend", str(FIXTURE_BUNDLE), "--blender", str(fake), "--out", str(tmp_path / "x.blend")]) == 1
     assert "boom" in capsys.readouterr().err
+
+
+def test_info_explains_missing_images(bundle_copy: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Recordings since T10 say why frames have no image."""
+    with sqlite3.connect(bundle_copy / "session.sqlite") as db:
+        db.execute("INSERT INTO meta VALUES ('image_skip.no_buffer', '2'), ('image_skip.notReady', '1')")
+    assert main(["info", str(bundle_copy)]) == 0
+    assert "7 with an image, 0 dropped (no image: 2 no_buffer, 1 notReady)" in capsys.readouterr().out
+    assert main(["info", "--json", str(bundle_copy)]) == 0
+    assert json.loads(capsys.readouterr().out)["image_skips"] == {"no_buffer": 2, "notReady": 1}

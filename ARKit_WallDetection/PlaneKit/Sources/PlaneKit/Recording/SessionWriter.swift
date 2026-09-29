@@ -8,8 +8,8 @@ public struct SessionSummary: Sendable, Equatable {
     public var framesLogged: Int
     public var framesWithImage: Int
     public var framesDropped: Int
-    /// Images the encoder refused, by `VideoSkipReason`. Pool exhaustion on the capture side isn't here: those frames
-    /// arrive without an image.
+    /// Frames without an image, by reason: `no_buffer` (the capture side had no free pool buffer, or the copy failed)
+    /// or the encoder's `VideoSkipReason`. Also written to `meta` as `image_skip.<reason>`.
     public var imageSkips: [String: Int]
 }
 
@@ -34,7 +34,7 @@ public final class SessionWriter: @unchecked Sendable {
     // Queue-confined.
     private var batch = Batch()
     private var framesWithImage = 0
-    private var imageSkips: [String: Int] = [:]
+    private var imageSkips = ImageSkipLog()
 
     private struct Counters {
         var nextIndex = 0
@@ -80,6 +80,8 @@ public final class SessionWriter: @unchecked Sendable {
                 constants: constants, realTime: realTimeVideo
             )
         }
+        // Allocate the pool before the first frame, so capture never pays for it (T10: images went missing at start).
+        video?.warmUp()
         if autoCommit { startTimer() }
     }
 
@@ -145,7 +147,7 @@ public final class SessionWriter: @unchecked Sendable {
     }
 
     /// Stops accepting, commits the rest, writes the final `meta` rows, finishes the video and seals the database.
-    public func finish(stopReason: String) async throws -> SessionSummary {
+    public func finish(stopReason: StopReason) async throws -> SessionSummary {
         state.withLock { $0.accepting = false }
         let summary: SessionSummary = try await onQueue {
             self.timer?.cancel()
@@ -155,14 +157,17 @@ public final class SessionWriter: @unchecked Sendable {
                 framesLogged: self.state.withLock { $0.nextIndex },
                 framesWithImage: self.framesWithImage,
                 framesDropped: self.state.withLock { $0.dropped },
-                imageSkips: self.imageSkips
+                imageSkips: self.imageSkips.counts
             )
             try self.database.transaction {
                 try self.database.setMeta("frames_logged", "\(summary.framesLogged)")
                 try self.database.setMeta("frames_with_image", "\(summary.framesWithImage)")
                 try self.database.setMeta("frames_dropped", "\(summary.framesDropped)")
                 try self.database.setMeta("stopped_at", ISO8601DateFormatter().string(from: .now))
-                try self.database.setMeta("stop_reason", stopReason)
+                try self.database.setMeta("stop_reason", stopReason.rawValue)
+                for row in self.imageSkips.metaRows {
+                    try self.database.setMeta(row.key, row.value)
+                }
             }
             return summary
         }
@@ -177,13 +182,21 @@ public final class SessionWriter: @unchecked Sendable {
     private func accept(_ frame: FrameRecord, image: PixelBufferBox?) {
         var record = frame
         record.hasImage = false
-        if let image, let video {
-            switch video.append(image.buffer, frameIndex: record.index) {
-            case .appended:
-                record.hasImage = true
-                framesWithImage += 1
-            case .skipped(let reason):
-                imageSkips[reason.rawValue, default: 0] += 1
+        if let video {
+            var missing: String?
+            if let image {
+                switch video.append(image.buffer, frameIndex: record.index) {
+                case .appended:
+                    record.hasImage = true
+                    framesWithImage += 1
+                case .skipped(let reason):
+                    missing = reason.rawValue
+                }
+            } else {
+                missing = "no_buffer"
+            }
+            if let burst = imageSkips.record(missing: missing) {
+                batch.events.append(EventRecord(frameIndex: record.index, kind: "image_skip", detail: burst))
             }
         }
         batch.frames.append(record)

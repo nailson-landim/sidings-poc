@@ -1,6 +1,6 @@
 # SPEC: Plane Lab (record on the phone, replay and fit on the Mac)
 
-*Status: **spec approved** (user, 2026-09-28: "Everything seems fine"). **Plan (§17) and tasks (§18) approved 2026-09-28; building from T1.** Created 2026-09-25 from `REQUEST.md`; review answers folded in 2026-09-28 (L5–L11). Context: `CONSOLIDATION.md` (D1–D3, §4, §8, §10b).*
+*Status: **spec approved** (user, 2026-09-28: "Everything seems fine"). **Plan (§17) and tasks (§18) approved 2026-09-28. Phases 0 and 1 are done (Checkpoints 0 and 1 passed); Phase 2 is in progress (T11 done, T10 code done, 2026-09-29).** Created 2026-09-25 from `REQUEST.md`; review answers folded in 2026-09-28 (L5–L11). Context: `CONSOLIDATION.md` (D1–D3, §4, §8, §10b).*
 
 This one file holds the spec for the Plane Lab and, once the spec is approved, its plan (§17) and tasks (§18). For this work, `ARKit_WallDetection/tasks/plan.md` and `tasks/todo.md` aren't used.
 
@@ -147,8 +147,9 @@ An export to other formats can come later.
 | `video_width`, `video_height`, `video_fps`, `video_codec`, `video_bitrate` | `1920`, `1440`, `60`, `hevc`, `8000000` |
 | `arkit_format_fps`, `arkit_format_resolution` | `60`, `1920x1440`: the running configuration's `videoFormat`, as promised. The `frame.t` column shows what was delivered; T3 measured 30 Hz against 60 promised (§3.4, §15 R1). |
 | `started_at`, `stopped_at` | ISO 8601 UTC |
-| `stop_reason` | `user` / `interruption` / `reset` / `mode_change` / `low_disk` / `error` |
+| `stop_reason` | `user` / `reset` / `mode_change` / `pause` / `background` / `interruption` / `error` / `low_disk` (PlaneKit `StopReason`, T10) |
 | `frames_logged`, `frames_with_image`, `frames_dropped` | counters written when the recording is finalized |
+| `image_skip.<reason>` | Frames without an image, by reason, written at finalize (T10). `no_buffer`: the capture side had no free pool buffer, or the copy failed. Otherwise the encoder's reason (`notReady`, `outOfOrder`, `writerFailed`). Only reasons that occurred appear. |
 | `location_auth`, `location_accuracy` | `when_in_use` / `denied` / `not_determined`; `full` / `reduced` (the user can grant approximate location only) |
 | `const.<name>` | One row per `RecorderConstants` property (§4 R14, §10), for example `const.commitIntervalS` = `0.5`. Written at Record, so a killed recording still has them. |
 
@@ -203,10 +204,13 @@ An export to other formats can come later.
 Location is **site metadata, not geometry**: it identifies the recording site and, with the camera yaw from the same frames, gives each facade's compass direction. Nothing in the pipeline uses it for poses.
 
 **`event`** (`frame_idx INTEGER, kind TEXT, detail TEXT`) logs:
-- tracking-state changes
-- interruptions and relocalization
-- recording start and stop
-- user marks (the Mark button, §4)
+
+| `kind` | `detail` | When |
+|---|---|---|
+| `record` | `start`, `stop:<stop_reason>` | Record and Stop. An interruption, going to the background, an error or low disk also stop, as `stop:<reason>` |
+| `tracking` | `normal`, `not_available`, `limited`, `limited/<reason>` | The state at frame 0, then every change on its exact frame. Relocalization shows as `limited/relocalizing` (T10) |
+| `image_skip` | `no_buffer` or an encoder reason | The first frame of each run of frames without an image (T10) |
+| `mark` | `mark N` | The Mark button (§4 R11) |
 
 In Blender these become timeline markers.
 
@@ -230,7 +234,7 @@ Any change to the tables or conventions bumps `schema_version`. Readers refuse v
 | R1 | A **Record/Stop** button in the HUD. |
 | R2 | While recording, the HUD shows elapsed time, frames logged, images dropped, MB written and free disk space. |
 | R3 | Recording runs **alongside** the current plane viewer, and everything it does today keeps working. These stop and finalize a recording first, and log the reason: Reset, a detection-mode change, a session interruption, going to the background, or a session error. |
-| R4 | **Capture path.** Inside `session(_:didUpdate frame:)`, copy the pose, intrinsics, points and ids into a `FrameRecord`. Copy `capturedImage` into a small pixel-buffer pool the recorder owns (about 4 buffers). Hand both to background writers. **Never retain the `ARFrame` or ARKit's pixel buffer.** If no pool buffer is free, or the video input isn't ready, skip the image (`has_image = 0`) but keep the metadata. |
+| R4 | **Capture path.** Inside `session(_:didUpdate frame:)`, copy the pose, intrinsics, points and ids into a `FrameRecord`. Copy `capturedImage` into a small pixel-buffer pool the recorder owns (6 buffers since T10, allocated when Record is tapped). Hand both to background writers. **Never retain the `ARFrame` or ARKit's pixel buffer.** If no pool buffer is free, or the video input isn't ready, skip the image (`has_image = 0`) but keep the metadata. |
 | R5 | **Write path.** SQLite runs on its own serial queue in WAL mode, with one transaction about every 0.5 s. The queue is bounded. If it ever fills, whole frames are dropped and counted. The delegate is never blocked. |
 | R6 | **Stop:** finish the video, commit, write the final `meta` rows, close. |
 | R7 | **Sessions sheet:** a list of recordings (date, duration, size, device), with **Share** (zipped with `NSFileCoordinator`'s `.forUploading`, so no dependency) and **Delete**. |
@@ -436,7 +440,7 @@ public struct RecorderConstants: Sendable {
     public var videoBitrate = 8_000_000
     public var keyframeIntervalS = 0.5
     public var commitIntervalS = 0.5
-    public var pixelPoolSize = 4
+    public var pixelPoolSize = 6
     public var lowDiskBytes: Int64 = 1_000_000_000
     public var headingFilterDeg = 1.0
 
@@ -670,6 +674,7 @@ Minor decisions made while planning, under the user's "minor decisions I trust y
 | P15 | **`planelab peek`** (user request, 2026-09-28: "a table on the sqlite file to peek the data, structured so I can catch all details"): it writes `<bundle>/lab/peek.sqlite` with every BLOB decoded into columns, enums as words, per-point and per-feature tables, and an `_about` table explaining every column (a test enforces that). It's a separate file because recordings are immutable (§3.2). | The user needs to see raw data before the Blender import exists |
 | P16 | **`planelab blend`** (2026-09-28, after the user asked for the Blender file of a new recording): it runs Blender headless with `scripts/replay_blend.py` and saves `<bundle>/lab/replay.blend`, the import in an empty scene that opens in camera view. Blender comes from `--blender`, then `$BLENDER`, then the default app path. It works from a repository checkout. | A new recording goes to Blender in one command |
 | P17 | **ARKit planes layer brought forward from T21** (2026-09-28, the user's "hold our horses"): the Blender import adds an *ARKit planes* mesh that the frame handler fills with every live anchor's boundary polygon, in SidingsAR's colors at 35 % opacity. `planelab.planes.PlaneTimeline` shows each anchor's latest add or update until its remove. T21 keeps the rest of its layers (averaged cloud, our planes, readouts). | The user wanted ARKit's planes next to the points now |
+| P18 | **Missing images at startup** (T10, 2026-09-29): warm the pixel pool when the writer opens, and raise `pixelPoolSize` from 4 to 6 (about 9 MB more at 1440p). Record why each image is missing (`image_skip.*` in `meta`, and an `image_skip` event per burst). The Mac couldn't reproduce the losses, so the fix is a mitigation, and the counters from the next device recording confirm or redirect it. | Every recording lost frames 5–9; the cause couldn't be seen from the data |
 
 ### 17.5 Risks found while planning
 
@@ -886,8 +891,20 @@ The recording's `video.mov` becomes the camera's background movie clip, starting
 
 The recording stops and finalizes, with the matching `stop_reason`, on any of: Reset, a detection-mode change, an interruption, going to the background, or a session error. Tracking-state changes, interruptions and relocalization become `event` rows. Recording also stops when free space falls below `lowDiskBytes` (`low_disk`). The reason mapping and the disk rule are pure logic in PlaneKit (P10).
 
-- [ ] Unit tests cover every stop reason and the low-disk rule.
-- [ ] **Device:** tapping Reset mid-recording leaves a finalized session with `stop_reason = reset`, and its tracking events show as markers in Blender.
+- [x] Unit tests cover every stop reason and the low-disk rule.
+- [ ] **Device:** tapping Reset mid-recording leaves a finalized session with `stop_reason = reset`, and its tracking events show as markers in Blender. *(Also check `planelab info` for the new "no image: …" breakdown.)*
+- **Code (2026-09-29):**
+  - **PlaneKit `RecordingPolicy.swift`:**
+    - `StopReason`, the typed `meta.stop_reason`, now includes `pause` and `background`.
+    - `DiskGuard` stops below `lowDiskBytes`; an unknown free space never stops.
+    - `TrackingChangeDetector` gives the tracking detail at frame 0 and on every change.
+    - `ImageSkipLog` counts missing images by reason, with one event per burst.
+  - **Startup image loss** (every recording, frames 5–9):
+    - The pool is warmed when the writer opens, and `pixelPoolSize` goes from 4 to 6.
+    - Every missing image is attributed (`meta.image_skip.*`, `image_skip` events) (P18).
+    - A Mac reproduction at 1440p, real-time, 60 Hz showed no misses with 4 or 6 buffers, warmed or not, so the cause is phone-side. The next recording's counters will say whether it's the pool or the encoder.
+  - **App:** tracking events are stamped on the exact frame. The free-space check runs once a second, and `scenePhase == .background` stops the recording (an ARKit interruption may come first and be the recorded reason).
+  - **Tests:** 7 new Swift tests (75 in total); `planelab info` shows `(no image: N reason, ...)`.
 - **Verify:** `swift test`; compile check; device run.
 - **Depends on:** T7.
 - **Files:** `PlaneKit/Sources/PlaneKit/Recording/RecordingPolicy.swift`, `PlaneKit/Tests/PlaneKitTests/Recording/RecordingPolicyTests.swift`, `SidingsAR/Recording/SessionRecorder.swift`, `SidingsAR/ARSessionController.swift`, `SidingsAR/ContentView.swift` (scene phase)

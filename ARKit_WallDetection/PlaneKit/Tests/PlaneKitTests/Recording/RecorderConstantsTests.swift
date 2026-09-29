@@ -11,7 +11,7 @@ struct RecorderConstantsTests {
         #expect(rows.allSatisfy { $0.key.hasPrefix("const.") })
         let byKey = Dictionary(uniqueKeysWithValues: rows.map { ($0.key, $0.value) })
         #expect(byKey["const.videoFPS"] == "60")
-        #expect(byKey["const.pixelPoolSize"] == "4")
+        #expect(byKey["const.pixelPoolSize"] == "6")
         #expect(byKey["const.keyframeIntervalS"] == "0.5")
         #expect(byKey["const.lowDiskBytes"] == "1000000000")
     }
@@ -20,6 +20,6 @@ struct RecorderConstantsTests {
         var constants = RecorderConstants()
         constants.pixelPoolSize = 1
         #expect(constants.metaRows.first { $0.key == "const.pixelPoolSize" }?.value == "1")
-        #expect(RecorderConstants.current.pixelPoolSize == 4)
+        #expect(RecorderConstants.current.pixelPoolSize == 6)
     }
 }

@@ -15,7 +15,7 @@ final class ARSessionController: NSObject {
     // MARK: HUD state
 
     var mode: DetectionMode = .both {
-        didSet { if mode != oldValue { restart(reason: "mode_change") } }
+        didSet { if mode != oldValue { restart(reason: .modeChange) } }
     }
     var showMarkers = true {
         didSet {
@@ -96,20 +96,20 @@ final class ARSessionController: NSObject {
     }
 
     func pause() {
-        recorder.stop(reason: "pause")
+        recorder.stop(reason: .pause)
         arView.session.pause()
     }
 
     func toggleRecording() {
         if recorder.isRecording {
-            recorder.stop(reason: "user")
+            recorder.stop(reason: .user)
         } else {
             recorder.start(configuration: arView.session.configuration, mode: mode, lidar: isLiDARDevice)
         }
     }
 
     /// Drops every anchor and tracker state and restarts tracking from scratch. Stops a recording first (SPEC §4 R3).
-    func restart(reason: String = "reset") {
+    func restart(reason: StopReason = .reset) {
         recorder.stop(reason: reason)
         renderer.removeAll()
         tracker.reset()
@@ -250,7 +250,7 @@ extension ARSessionController: @preconcurrency ARSessionDelegate {
     }
 
     func sessionWasInterrupted(_ session: ARSession) {
-        recorder.stop(reason: "interruption")
+        recorder.stop(reason: .interruption)
         interruptionBanner = "Session interrupted — camera unavailable"
         banner = interruptionBanner
         logger.warning("Session interrupted")
@@ -268,7 +268,7 @@ extension ARSessionController: @preconcurrency ARSessionDelegate {
 
     func session(_ session: ARSession, didFailWithError error: Error) {
         logger.error("Session failed: \(error.localizedDescription, privacy: .public)")
-        recorder.stop(reason: "error")
+        recorder.stop(reason: .error)
         errorMessage = error.localizedDescription
     }
 }

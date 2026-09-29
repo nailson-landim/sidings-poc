@@ -12,7 +12,8 @@ public struct RecorderConstants: Sendable, Equatable {
     public var fragmentIntervalS = 1.0
     /// Pixel buffers the recorder may hold (copies waiting for, or inside, the encoder). When all are in use the
     /// frame's image is skipped (`has_image = 0`) and its metadata is still logged.
-    public var pixelPoolSize = 4
+    /// 6 since T10 (was 4): headroom while the encoder starts, when every recording lost images at frames 5–9.
+    public var pixelPoolSize = 6
     /// One SQLite transaction per this interval.
     public var commitIntervalS = 0.5
     /// Frames the write queue may hold before whole frames are dropped.

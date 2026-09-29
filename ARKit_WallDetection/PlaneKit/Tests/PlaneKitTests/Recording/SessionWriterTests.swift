@@ -24,7 +24,7 @@ struct SessionWriterTests {
         for _ in 0..<5 { writer.enqueue(Self.frame, image: nil) }
         try await Task.sleep(for: .milliseconds(300))
         #expect(try committedFrames(folder) == 5)
-        _ = try await writer.finish(stopReason: "user")
+        _ = try await writer.finish(stopReason: .user)
     }
 
     @Test func indicesHaveNoHolesAndStampTheLastFrame() throws {
@@ -63,7 +63,7 @@ struct SessionWriterTests {
         try writer.flush()
         #expect(writer.enqueue(Self.frame, image: nil) == 20)
 
-        let summary = try await writer.finish(stopReason: "user")
+        let summary = try await writer.finish(stopReason: .user)
         #expect(summary.framesLogged == 21)
         #expect(summary.framesDropped == 80)
         let meta = try SessionDatabase.open(at: folder.file("session.sqlite")).meta()
@@ -107,30 +107,39 @@ struct SessionWriterTests {
             #expect(writer.enqueue(Self.frame, image: box) == i)
             try await Task.sleep(for: .milliseconds(5))
         }
-        let summary = try await writer.finish(stopReason: "user")
+        let summary = try await writer.finish(stopReason: .user)
 
+        // Every frame either has an image or a counted reason. Frames 0 and 7 had none on the capture side
+        // (`no_buffer`, T10); the encoder may also refuse a frame now and then (`notReady`) when fed this fast.
         #expect(summary.framesLogged == 12)
-        #expect(summary.framesWithImage == expectedImages.count)
-        #expect(summary.imageSkips.isEmpty)
+        #expect(summary.framesWithImage + summary.imageSkips.values.reduce(0, +) == 12)
+        #expect(summary.imageSkips["no_buffer"] == 2)
         let files = try FileManager.default.contentsOfDirectory(atPath: folder.url.path).sorted()
         #expect(files == ["session.sqlite", "video.mov"])
 
         let db = try SessionDatabase.open(at: folder.file("session.sqlite"))
         let meta = try db.meta()
         #expect(meta["device_model"] == "test")
-        #expect(meta["const.pixelPoolSize"] == "4")
+        #expect(meta["const.pixelPoolSize"] == "6")
         #expect(meta["started_at"] != nil && meta["stopped_at"] != nil)
         #expect(meta["stop_reason"] == "user")
-        #expect(meta["frames_with_image"] == "\(expectedImages.count)")
-        #expect(try db.frames().filter(\.hasImage).map(\.index) == expectedImages)
-        #expect(try await VideoProbe.read(folder.file("video.mov"), fps: 60).frames == expectedImages)
+        let withImage = try db.frames().filter(\.hasImage).map(\.index)
+        #expect(meta["frames_with_image"] == "\(withImage.count)")
+        #expect(withImage.count == summary.framesWithImage)
+        #expect(Set(withImage).isSubset(of: expectedImages))
+        for (reason, count) in summary.imageSkips {
+            #expect(meta["image_skip.\(reason)"] == "\(count)")
+        }
+        let skips = try db.events().filter { $0.kind == "image_skip" }
+        #expect(skips.first == EventRecord(frameIndex: 0, kind: "image_skip", detail: "no_buffer"))
+        #expect(try await VideoProbe.read(folder.file("video.mov"), fps: 60).frames == withImage)
     }
 
     @Test func nothingIsAcceptedAfterFinish() async throws {
         let folder = TempFolder()
         let writer = try SessionWriter(bundle: folder.url, meta: [], videoSize: nil, autoCommit: false)
         writer.enqueue(Self.frame, image: nil)
-        _ = try await writer.finish(stopReason: "reset")
+        _ = try await writer.finish(stopReason: .reset)
         #expect(writer.enqueue(Self.frame, image: nil) == nil)
         #expect(try SessionDatabase.open(at: folder.file("session.sqlite")).meta()["stop_reason"] == "reset")
     }

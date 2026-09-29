@@ -39,6 +39,9 @@ class SessionInfo:
     delivered_fps: float | None
     frames_with_image: int
     frames_dropped: int | None
+    image_skips: dict[str, int]
+    """Why frames have no image (meta ``image_skip.<reason>``, recordings since T10): ``no_buffer`` on the capture
+    side, or the encoder's reason such as ``notReady``."""
     tracking_normal_pct: float
     points: PointRange | None
     anchor_ids: int
@@ -75,6 +78,11 @@ def summarize(session: Session) -> SessionInfo:
         delivered_fps=session.delivered_fps(),
         frames_with_image=int(session.image_flags().sum()),
         frames_dropped=int(dropped) if dropped is not None and dropped.isdigit() else None,
+        image_skips={
+            key.removeprefix("image_skip."): int(value)
+            for key, value in sorted(session.meta.items())
+            if key.startswith("image_skip.") and value.isdigit()
+        },
         tracking_normal_pct=100.0 * tracking_normal / frames if frames else 0.0,
         points=PointRange(
             count=int(all_distances.size),
@@ -93,6 +101,12 @@ def summarize(session: Session) -> SessionInfo:
     )
 
 
+def _skips(skips: dict[str, int]) -> str:
+    if not skips:
+        return ""
+    return " (no image: " + ", ".join(f"{count} {reason}" for reason, count in skips.items()) + ")"
+
+
 def describe(info: SessionInfo) -> str:
     """Human-readable lines for the CLI."""
     fps = f"{info.delivered_fps:.1f} fps delivered" if info.delivered_fps else "fps unknown"
@@ -100,7 +114,7 @@ def describe(info: SessionInfo) -> str:
     lines = [
         f"{info.name}  ({info.device}, started {info.started_at}, stop: {info.stop_reason})",
         f"frames    {info.frames} in {info.duration_s:.2f} s, {fps}; "
-        f"{info.frames_with_image} with an image, {dropped} dropped",
+        f"{info.frames_with_image} with an image, {dropped} dropped{_skips(info.image_skips)}",
         f"tracking  {info.tracking_normal_pct:.0f} % normal",
     ]
     if info.points:

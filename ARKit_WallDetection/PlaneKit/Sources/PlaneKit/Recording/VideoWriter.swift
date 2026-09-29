@@ -127,6 +127,15 @@ public final class VideoWriter {
         return status == kCVReturnSuccess ? buffer : nil
     }
 
+    /// Allocates every pool buffer now and hands them back, so the first frames of a recording don't pay for the
+    /// allocation during capture (T10).
+    public func warmUp() {
+        var held: [CVPixelBuffer] = []
+        while held.count < poolThreshold, let buffer = makeBuffer() {
+            held.append(buffer)
+        }
+    }
+
     /// Appends a pool buffer as log frame `frameIndex`. Never blocks.
     public func append(_ buffer: CVPixelBuffer, frameIndex: Int) -> VideoAppendResult {
         guard writer.status == .writing else { return .skipped(.writerFailed) }

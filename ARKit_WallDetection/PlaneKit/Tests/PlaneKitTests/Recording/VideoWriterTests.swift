@@ -68,6 +68,21 @@ struct VideoWriterTests {
         #expect(writer.makeBuffer() != nil)
     }
 
+    /// T10: warming the pool hands every buffer back, so the full pool is still available to capture.
+    @Test func warmUpLeavesThePoolFree() throws {
+        let folder = TempFolder()
+        var constants = RecorderConstants()
+        constants.pixelPoolSize = 3
+        let writer = try VideoWriter(
+            url: folder.file("warm.mov"), width: Self.width, height: Self.height, constants: constants, realTime: false
+        )
+        defer { writer.cancel() }
+        writer.warmUp()
+        let held = (0..<3).compactMap { _ in writer.makeBuffer() }
+        #expect(held.count == 3)
+        #expect(writer.makeBuffer() == nil)
+    }
+
     /// Also covers a leading gap: the first image is frame 5, and the file still says so.
     @Test func outOfOrderFramesAreSkipped() async throws {
         let folder = TempFolder()

@@ -29,6 +29,8 @@ final class SessionRecorder {
     @ObservationIgnored private var writer: SessionWriter?
     @ObservationIgnored private var firstTime: TimeInterval?
     @ObservationIgnored private var statsThrottle = Throttle(interval: 1.0)
+    @ObservationIgnored private var tracking = TrackingChangeDetector()
+    @ObservationIgnored private let diskGuard = DiskGuard(constants: .current)
     @ObservationIgnored private let logger = Logger(subsystem: "br.com.neuralnexgen.sidingsar", category: "recorder")
 
     func start(configuration: ARConfiguration?, mode: DetectionMode, lidar: Bool) {
@@ -58,6 +60,7 @@ final class SessionRecorder {
         marks = 0
         lastResult = nil
         statsThrottle.reset()
+        tracking = TrackingChangeDetector()
     }
 
     /// Called from `session(_:didUpdate:)` for every frame. Never blocks and never keeps `frame`.
@@ -71,16 +74,26 @@ final class SessionRecorder {
         } else {
             imagesDropped += 1
         }
-        let index = writer.enqueue(ARRecordAdapter.frameRecord(frame), image: image)
+        let metadata = ARRecordAdapter.frameRecord(frame)
+        let index = writer.enqueue(metadata, image: image)
         if index == 0 {
             writer.enqueue(EventRecord(frameIndex: 0, kind: "record", detail: "start"))
             // Planes ARKit found before Record was tapped get no didAdd while recording: log them as added at frame 0.
             record(frame.anchors.compactMap { $0 as? ARPlaneAnchor }, event: .add)
         }
+        // The tracking state when recording starts, then every change, on the exact frame (T10).
+        if let index, let change = tracking.observe(metadata.tracking, metadata.trackingReason) {
+            writer.enqueue(EventRecord(frameIndex: index, kind: "tracking", detail: change))
+        }
 
         if statsThrottle.fire(now: frame.timestamp) {
-            refreshStats(now: frame.timestamp, writer: writer)
-            if writer.hasFailed { stop(reason: "error") }
+            let free = Self.freeBytes(at: writer.bundle)
+            refreshStats(now: frame.timestamp, writer: writer, freeBytes: free)
+            if writer.hasFailed {
+                stop(reason: .error)
+            } else if diskGuard.shouldStop(freeBytes: free) {
+                stop(reason: .lowDisk)
+            }
         }
     }
 
@@ -101,18 +114,19 @@ final class SessionRecorder {
         writer.enqueue(EventRecord(frameIndex: max(writer.lastFrameIndex, 0), kind: "mark", detail: "mark \(marks)"))
     }
 
-    /// Finishes the bundle in the background. `reason` goes to `meta.stop_reason` (SPEC §3.3).
-    func stop(reason: String) {
+    /// Finishes the bundle in the background. `reason` goes to `meta.stop_reason` (SPEC §3.3, §4 R3 and R9).
+    func stop(reason: StopReason) {
         guard isRecording, let writer else { return }
         isRecording = false
         self.writer = nil
-        writer.enqueue(EventRecord(frameIndex: max(writer.lastFrameIndex, 0), kind: "record", detail: "stop:\(reason)"))
+        writer.enqueue(EventRecord(frameIndex: max(writer.lastFrameIndex, 0), kind: "record", detail: "stop:\(reason.rawValue)"))
         let name = writer.bundle.lastPathComponent
         Task {
             do {
                 let summary = try await writer.finish(stopReason: reason)
                 logger.info("Saved \(name, privacy: .public): \(summary.framesLogged) frames, \(summary.framesWithImage) images, \(summary.framesDropped) dropped")
-                lastResult = "Saved \(name): \(summary.framesLogged) frames, \(summary.framesWithImage) images"
+                let reasonNote = reason == .user ? "" : " (stopped: \(reason.rawValue))"
+                lastResult = "Saved \(name): \(summary.framesLogged) frames, \(summary.framesWithImage) images\(reasonNote)"
             } catch {
                 logger.error("Finishing \(name, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
                 lastResult = "Saving \(name) failed: \(error.localizedDescription)"
@@ -120,12 +134,12 @@ final class SessionRecorder {
         }
     }
 
-    private func refreshStats(now: TimeInterval, writer: SessionWriter) {
+    private func refreshStats(now: TimeInterval, writer: SessionWriter, freeBytes: Int64?) {
         elapsed = now - (firstTime ?? now)
         frames = writer.lastFrameIndex + 1
         framesDropped = writer.droppedFrames
         megabytes = Double(Self.size(of: writer.bundle)) / 1_000_000
-        freeGB = Double(Self.freeBytes(at: writer.bundle) ?? 0) / 1_000_000_000
+        freeGB = Double(freeBytes ?? 0) / 1_000_000_000
     }
 
     // MARK: Files

@@ -4,6 +4,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Bindable var controller: ARSessionController
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ARViewContainer(controller: controller)
@@ -22,6 +23,11 @@ struct ContentView: View {
             }
             .onAppear { controller.start() }
             .onDisappear { controller.pause() }
+            .onChange(of: scenePhase) { _, phase in
+                // SPEC §4 R3: going to the background stops and saves a recording. ARKit may report an interruption
+                // first, in which case that is the recorded reason.
+                if phase == .background { controller.recorder.stop(reason: .background) }
+            }
             .alert(
                 "AR session error",
                 isPresented: Binding(
