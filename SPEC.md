@@ -295,7 +295,7 @@ With a gate, 100 samples means 100 viewpoints. But 3 cm ignores range: it gives 
 | `confirm_hits` ↓ | Planes are shown sooner | More short-lived planes |
 | Merge distance ↑ | Fewer duplicates | Hides recessed doors and windows 3–10 cm deep (CLAUDE.md domain note) |
 
-All settings live in one frozen `LabConfig`, loaded from TOML. Presets go in `PlaneLab/configs/` (`default.toml`, `recall.toml`).
+All settings live in one frozen `LabConfig` (`planelab.config`), with sections `filter`, `gate`, `accumulate`, `fit` and `track`, 29 settings in all. It's loaded from TOML, and a file may list only what it changes. Presets go in `PlaneLab/configs/`: `default.toml` has every setting with a comment and is tested equal to the code, and `recall.toml` lists only its overrides.
 
 ### 5.4 Per-frame readouts
 
@@ -482,11 +482,15 @@ Reading SQLite is synchronous on purpose: this is a batch tool inside Blender, w
 
 ```python
 @dataclass(slots=True, frozen=True)
-class FitConfig:
+class FitConfig:  # planelab.config: one section of LabConfig; __post_init__ checks every value
+    fit_every: int = 6
     tau0_m: float = 0.03
     tau_range_k: float = 0.0
     min_inliers: int = 30
-    vertical_prior: bool = True
+    vertical: bool = True
+    horizontal: bool = True
+    free: bool = False
+    # ... see PlaneLab/configs/default.toml for every setting
 
 
 def fit_vertical_plane(
@@ -980,8 +984,14 @@ A sheet lists the recordings (date, duration, size, device, read from `meta`), w
 
 Frozen dataclasses for every §5 setting, TOML load and save with validation, `configs/default.toml` and `configs/recall.toml`, and conversion to key/value rows for `results.sqlite`.
 
-- [ ] Unknown keys and out-of-range values are rejected with an error naming the field.
-- [ ] Saving then loading gives an equal config, and `default.toml` equals the dataclass defaults.
+- [x] Unknown keys and out-of-range values are rejected with an error naming the field.
+- [x] Saving then loading gives an equal config, and `default.toml` equals the dataclass defaults.
+- **Result (2026-09-29):** done.
+  - **`planelab.config`:** `LabConfig` has five frozen sections (29 settings), and each section checks its values in `__post_init__`, so hand-built configs are checked too.
+  - **Loading and saving:** TOML goes in with `tomllib` and out through a small writer (stdlib only, L6). A file may be partial. Integers are accepted where floats are expected; bools are never taken as ints.
+  - **Storage:** `config_rows()` gives the `section.key` rows for `results.sqlite` (L8).
+  - **Presets:** `configs/default.toml` and `configs/recall.toml` (recall: `min_samples` 3, `tau0_m` 0.05, `tau_range_k` 0.001, `min_inliers` 15, `min_spread_m` 0.15, `confirm_hits` 2).
+  - **Tests:** 19. The Python suite is at 93 tests and 98.7 % coverage.
 - **Verify:** `pytest --cov`; `ruff`
 - **Depends on:** T6.
 - **Files:** `PlaneLab/src/planelab/config.py`, `PlaneLab/configs/{default,recall}.toml`, `PlaneLab/tests/test_config.py`

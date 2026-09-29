@@ -117,11 +117,13 @@ PlaneLab/
 │   ├── replay.py     packed per-frame arrays behind the Blender timeline
 │   ├── planes.py     ARKit's planes over time: live anchors per frame, boundaries in world coordinates
 │   ├── synth.py      synthetic sessions with known planes (facade, edges, room) and synth_truth.json
+│   ├── config.py     LabConfig: every lab setting (filter, gate, accumulate, fit, track), TOML in and out
 │   ├── writer.py     a minimal schema-v1 writer, used only by synth
 │   ├── cli.py        python -m planelab
 │   └── log.py        silent rotating log file, plus stderr for the CLI
 ├── blender/planelab_blender/  the extension: manifest, import operator, scene build, frame handler; vendor/planelab → src/planelab
 ├── scripts/          build_extension.sh (the zip), replay_blend.py (behind `blend`), pull.sh (phone → Mac → Blender, see the root README)
+├── configs/          default.toml (every setting, commented; tested equal to the code) and recall.toml (overrides only)
 ├── spikes/           R2 Blender video spike (see spikes/README.md)
 └── tests/            pytest: the contract (same fixture as Swift), reader, peek, axes, replay, CLI; test_blender.py drives headless Blender
 ```
