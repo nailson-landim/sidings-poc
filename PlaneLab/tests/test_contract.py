@@ -1,12 +1,14 @@
 """The session-format contract, Python side (SPEC.md §3.5, S7): the Swift-written fixture decodes to expected.json."""
 
+import json
 from dataclasses import asdict
 from typing import Any
 
 import numpy as np
 import pytest
-from conftest import FIXTURE_BUNDLE, SCHEMA_FILE
+from conftest import FIXTURE_BUNDLE, SCHEMA_FILE, V1_FIXTURES
 
+from planelab.info import PhoneCloud, describe, summarize
 from planelab.schema import DDL
 from planelab.session import open_session
 
@@ -89,3 +91,38 @@ def test_small_tables(expected: dict[str, Any], table: str) -> None:
     with open_session(FIXTURE_BUNDLE) as session:
         rows = {"location": session.locations, "heading": session.headings, "event": session.events}[table]()
     assert [asdict(r) for r in rows] == expected[table]
+
+
+def test_cloud_rows(expected: dict[str, Any]) -> None:
+    with open_session(FIXTURE_BUNDLE) as session:
+        assert session.schema_version == 2
+        rows = session.cloud_rows()
+    assert len(rows) == len(expected["cloud"]) == 2
+    for row, want in zip(rows, expected["cloud"], strict=True):
+        assert (row.frame_idx, row.full) == (want["frame_idx"], bool(want["full"]))
+        assert row.removed.dtype == np.uint64 and row.removed.tolist() == want["removed_ids"]
+        assert row.ids.tolist() == want["ids"]
+        assert np.array_equal(row.points, as_points(want["points"]))
+        assert row.samples.tolist() == want["samples"]
+    assert rows[1].ids[-1] == 18_000_000_000_000_000_000
+    assert rows[1].samples[-1] == 300
+
+
+def test_version_1_recordings_stay_readable() -> None:
+    old = json.loads((V1_FIXTURES / "expected.json").read_text())
+    with open_session(V1_FIXTURES / "tiny.planelab") as session:
+        assert session.schema_version == 1
+        assert session.meta == old["meta"]
+        assert [f.idx for f in session.frames()] == [row["idx"] for row in old["frame"]]
+        assert session.cloud_rows() == []
+    assert "cloud" not in old
+
+
+def test_info_reports_the_phones_cloud() -> None:
+    with open_session(FIXTURE_BUNDLE) as session:
+        info = summarize(session)
+    assert info.cloud == PhoneCloud(rows=2, points=2, frames_missed=0)
+    assert "cloud     phone: 2 averaged points after 2 rows (0 frames missed)" in describe(info)
+    with open_session(V1_FIXTURES / "tiny.planelab") as session:
+        old = summarize(session)
+    assert old.cloud is None and "none recorded (schema v1" in describe(old)

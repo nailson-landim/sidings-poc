@@ -135,13 +135,13 @@ An export to other formats can come later.
 - **BLOBs:** little-endian, packed with no padding.
 - **Immutability:** once a recording is finalized, `session.sqlite` and `video.mov` are never modified. Everything computed on the Mac goes under `lab/`.
 
-### 3.3 Tables (schema version 1)
+### 3.3 Tables (schema version 2)
 
 **`meta`** (`key TEXT PRIMARY KEY, value TEXT`):
 
 | Key | Example |
 |---|---|
-| `schema_version` | `1` |
+| `schema_version` | `2` since L12 (adds `cloud`); `1` before. Readers open both. |
 | `app_version`, `device_model`, `os_version` | `2.2`, `iPhone14,5`, `26.0` |
 | `lidar` | `0` / `1` |
 | `plane_detection`, `world_alignment` | `both`, `gravity` |
@@ -152,7 +152,8 @@ An export to other formats can come later.
 | `frames_logged`, `frames_with_image`, `frames_dropped` | counters written when the recording is finalized |
 | `image_skip.<reason>` | Frames without an image, by reason, written at finalize (T10). `no_buffer`: the capture side had no free pool buffer, or the copy failed. Otherwise the encoder's reason (`notReady`, `outOfOrder`, `writerFailed`). Only reasons that occurred appear. |
 | `location_auth`, `location_accuracy` | `when_in_use` / `denied` / `not_determined`; `full` / `reduced` (the user can grant approximate location only) |
-| `const.<name>` | One row per `RecorderConstants` property (§4 R14, §10), for example `const.commitIntervalS` = `0.5`. Written at Record, so a killed recording still has them. |
+| `const.<name>` | One row per `RecorderConstants` property (§4 R14, §10), for example `const.commitIntervalS` = `0.5`. Written at Record, so a killed recording still has them. The `const.cloud*` rows are the averaged cloud's settings (P21). |
+| `cloud_rows`, `cloud_points`, `cloud_frames_dropped` | Written at Stop (v2): rows in `cloud`, averaged points after the last one, and recorded frames the phone's cloud never saw because its queue fell behind (0 expected). |
 
 **`frame`**, one row per logged `ARFrame`:
 
@@ -215,6 +216,17 @@ Location is **site metadata, not geometry**: it identifies the recording site an
 
 In Blender these become timeline markers.
 
+**`cloud`** (schema v2, L12, P23): the phone's averaged cloud, one row every `cloudSnapshotEvery` (6) recorded frames and one at Stop. Record clears the cloud, so it starts empty at frame 0 (P22).
+
+| Column | Type | Content |
+|---|---|---|
+| `frame_idx` | INTEGER PK | The row describes the cloud after this frame |
+| `full` | INTEGER | 1: the whole cloud (the first row and every `cloudFullEvery`-th, 50). 0: the changes since the previous row |
+| `removed_ids` | BLOB 8·R B | u64 ids to remove first (evicted), empty in a full row |
+| `ids` | BLOB 8·K B | u64 ids to set (new or updated averaged points; every id in a full row) |
+| `points` | BLOB 12·K B | K × 3 f32, averaged positions, world |
+| `samples` | BLOB 2·K B | K × u16, samples in each id's FIFO |
+
 ### 3.4 Video
 
 - `video.mov`: HEVC, at the captured-image resolution (typically 1920 × 1440), in landscape sensor orientation, with no rotation metadata.
@@ -226,7 +238,7 @@ In Blender these become timeline markers.
 
 ### 3.5 Versioning
 
-Any change to the tables or conventions bumps `schema_version`. Readers refuse versions they don't know, with a clear message. Contract fixtures in `session-format/fixtures/` cover every table, including `location`, `heading` and the `const.*` rows, and are checked by both the Swift tests and the Python tests.
+Any change to the tables or conventions bumps `schema_version`. Readers refuse versions they don't know, with a clear message. **Version 2** (2026-09-29, L12) adds `cloud` and the `cloud_*` meta rows; readers on both sides open versions 1 and 2, and `session-format/fixtures/v1/` stays to prove it. Contract fixtures in `session-format/fixtures/` cover every table, including `location`, `heading` and the `const.*` rows, and are checked by both the Swift tests and the Python tests.
 
 ## 4. Recorder (`recorder`, in SidingsAR)
 
@@ -1013,8 +1025,13 @@ The user asked for CurvSurf's accumulator in the iOS app, live and recorded (L12
 
 The `cloud` table (P23): `frame_idx` INTEGER PK, `full` INTEGER, `removed_ids` BLOB (u64), `ids` BLOB (u64), `points` BLOB (3 × f32), `samples` BLOB (u16). `schema_version` becomes 2 (§3.5), with `schema_v2.sql` as the DDL source. Record clears the cloud (P22), and `LiveCloud` hands rows to `SessionWriter` on the writer's frame numbers. Python reads v1 and v2; a v2 contract fixture (written by Swift) covers `cloud` rows, including a removal and a second full copy.
 
-- [ ] Swift: writer tests for the `cloud` rows, the v2 fixture decodes to `expected.json`, and a v1 file is still readable.
-- [ ] Python: the v2 contract test, `RecordedCloud.at(idx)` rebuilds the cloud from rows, `peek` decodes the table, and `info` prints the phone's final cloud.
+- [x] Swift: writer tests for the `cloud` rows, the v2 fixture decodes to `expected.json`, and a v1 file is still readable.
+- [x] Python: the v2 contract test, `RecordedCloud.at(idx)` rebuilds the cloud from rows, `peek` decodes the table, and `info` prints the phone's final cloud.
+- **Result (2026-09-29):** done. 106 Swift tests, 128 Python tests (99 % coverage); the iOS compile check is clean.
+  - **Format:** `session-format/schema_v2.sql` (v1 plus `cloud`), embedded on both sides; `SessionSchema.readable` / `SUPPORTED_VERSIONS` = 1, 2. The v2 fixture adds two rows: a full copy after frame 5, then changes after frame 9 that remove one id and set an id above 2^53 with 300 samples.
+  - **Phone:** `LiveCloud.startRecording` clears the cloud and emits rows on recorded frames; `stopRecording` (called in `SessionRecorder.stop`, before the writer finishes) adds the last row and returns the `cloud_*` meta. While recording, the cloud sees only frames the writer accepted, with their `idx`. Disk and error stops are now checked before a frame is recorded, so the last row covers exactly the recorded frames.
+  - **Python:** `Session.cloud_rows()`; `recorded_timeline(rows)` gives the same `CloudTimeline` as the Mac's recompute (now with explicit `full_rows`, cache format `cloud-v2`), plus `ids_at`; `peek` writes `cloud_rows`, `cloud_points` and `cloud_final`; `info` prints `cloud  phone: N averaged points after R rows (M frames missed)`.
+  - The implementation is `recorded_timeline` in `planelab.cloud`, not a separate `RecordedCloud` class.
 - **Verify:** `swift test`; `pytest`.
 - **Depends on:** T27.
 - **Files:** `session-format/schema_v2.sql`, `session-format/fixtures/v2/`, `PlaneKit/Sources/PlaneKit/Recording/{SessionDatabase,Records,SessionWriter}.swift`, `PlaneLab/src/planelab/{schema,session,peek,info,cloud}.py`

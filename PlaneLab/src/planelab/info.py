@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from planelab.cloud import recorded_timeline
 from planelab.session import Session
 
 TRACKING_NORMAL = 2
@@ -29,6 +30,17 @@ class Site:
 
 
 @dataclass(slots=True, frozen=True)
+class PhoneCloud:
+    """The averaged cloud the phone recorded (schema v2, SPEC.md L12, P23)."""
+
+    rows: int
+    points: int
+    """Averaged points after the last row."""
+    frames_missed: int | None
+    """Recorded frames the phone's cloud never saw (meta ``cloud_frames_dropped``); None when not finalized."""
+
+
+@dataclass(slots=True, frozen=True)
 class SessionInfo:
     name: str
     device: str
@@ -50,6 +62,9 @@ class SessionInfo:
     location_fixes: int
     headings: int
     events: int
+    schema_version: int
+    cloud: PhoneCloud | None
+    """None when the recording has no cloud rows (schema v1, or nothing recorded)."""
 
 
 def summarize(session: Session) -> SessionInfo:
@@ -67,6 +82,17 @@ def summarize(session: Session) -> SessionInfo:
     locations = session.locations()
     dropped = session.meta.get("frames_dropped")
     all_distances = np.concatenate(distances) if distances else np.empty(0, dtype=np.float32)
+    rows = session.cloud_rows()
+    missed = session.meta.get("cloud_frames_dropped", "")
+    cloud = (
+        PhoneCloud(
+            rows=len(rows),
+            points=len(recorded_timeline(rows).at(rows[-1].frame_idx)[0]),
+            frames_missed=int(missed) if missed.isdigit() else None,
+        )
+        if rows
+        else None
+    )
 
     return SessionInfo(
         name=session.bundle.name,
@@ -98,6 +124,8 @@ def summarize(session: Session) -> SessionInfo:
         location_fixes=len(locations),
         headings=len(session.headings()),
         events=len(session.events()),
+        schema_version=session.schema_version,
+        cloud=cloud,
     )
 
 
@@ -133,4 +161,10 @@ def describe(info: SessionInfo) -> str:
     else:
         lines.append("site      no location")
     lines.append(f"events    {info.events}")
+    if info.cloud:
+        c = info.cloud
+        missed = "?" if c.frames_missed is None else str(c.frames_missed)
+        lines.append(f"cloud     phone: {c.points} averaged points after {c.rows} rows ({missed} frames missed)")
+    else:
+        lines.append("cloud     none recorded" + (" (schema v1, before L12)" if info.schema_version < 2 else ""))
     return "\n".join(lines)

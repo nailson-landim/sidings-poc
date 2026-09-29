@@ -123,12 +123,27 @@ def test_small_tables_meta_summary_and_views(peek: sqlite3.Connection) -> None:
     assert row(peek, "SELECT utc FROM locations LIMIT 1")[0].startswith("2026-")
     assert row(peek, "SELECT true_deg FROM headings WHERE frame_idx = 7")[0] == -1
     assert row(peek, "SELECT count(*) FROM events")[0] == 6
-    assert row(peek, "SELECT value FROM meta WHERE key = 'schema_version'")[0] == "1"
+    assert row(peek, "SELECT value FROM meta WHERE key = 'schema_version'")[0] == "2"
     assert row(peek, "SELECT value FROM summary WHERE key = 'points.count'")[0] == "36"
     missing = [r[0] for r in peek.execute("SELECT idx FROM frames_without_image ORDER BY idx")]
     assert missing == [0, 4, 7]
     assert row(peek, "SELECT count(*) FROM slow_frames")[0] == 9  # 31.25 ms apart in the fixture
     assert row(peek, "SELECT count(*) FROM tracking_not_normal")[0] == 3
+
+
+def test_the_phones_cloud_is_decoded(peek: sqlite3.Connection) -> None:
+    def rows(sql: str) -> list[tuple[object, ...]]:
+        return [tuple(r) for r in peek.execute(sql)]
+
+    assert rows("SELECT frame_idx, full, removed, changed, points_after FROM cloud_rows ORDER BY 1") == [
+        (5, 1, 0, 2, 2),
+        (9, 0, 1, 2, 2),
+    ]
+    assert rows("SELECT point_id FROM cloud_points WHERE change = 'removed'") == [(str(2 << 40),)]
+    assert rows("SELECT point_id, x, samples FROM cloud_final ORDER BY samples") == [
+        (str(2 << 40 | 1), 2.5, 7),
+        ("18000000000000000000", 9.0, 300),
+    ]
 
 
 def test_cli_peek_with_csv(bundle_copy: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

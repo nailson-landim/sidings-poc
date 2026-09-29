@@ -4,9 +4,11 @@ The on-disk contract between the SidingsAR recorder (Swift) and Plane Lab (Pytho
 
 | File | What it is |
 |---|---|
-| `schema_v1.sql` | **The one source of the DDL** (SPEC §17.4 P2). Swift (`SessionSchema.ddl` in PlaneKit) and Python (`planelab.schema.DDL`) embed copies, and a test on each side checks the copy matches this file exactly. |
-| `fixtures/v1/tiny.planelab/` | A 10-frame session written by the real Swift writer: a sealed `session.sqlite` and a 256 × 192 HEVC `video.mov`. |
-| `fixtures/v1/expected.json` | What the fixture must decode to, table by table. |
+| `schema_v2.sql` | **The one source of the DDL** (SPEC §17.4 P2), schema version 2: version 1 plus the `cloud` table (SPEC L12, P23). Swift (`SessionSchema.ddl` in PlaneKit) and Python (`planelab.schema.DDL`) embed copies, and a test on each side checks the copy matches this file exactly. |
+| `schema_v1.sql` | Version 1, kept for reference. Both readers still open version 1 files. |
+| `fixtures/v2/tiny.planelab/` | A 10-frame session written by the real Swift writer: a sealed `session.sqlite` and a 256 × 192 HEVC `video.mov`. |
+| `fixtures/v2/expected.json` | What the fixture must decode to, table by table. |
+| `fixtures/v1/` | The version 1 fixture and its `expected.json`, kept to prove old recordings stay readable. |
 | `fixtures/cloud/golden.json` | Frames and the averaged cloud Plane Lab's accumulator builds from them under five settings (SPEC T27). The Swift port (`FeatureAccumulator`) must give the same ids and sample counts, and positions within 2e-6 m. Written by `PlaneLab/scripts/cloud_golden.py`; a Python test keeps it current. |
 
 ## The fixture
@@ -18,6 +20,7 @@ It exercises the cases a reader can get wrong:
 - **Camera matrices alternate identity and a quarter turn about Y,** with a translation in column 3, so a transposed or row-major reader fails.
 - **One anchor is added, updated and removed; another is only added.** A `remove` row carries only the id.
 - **Every other table has rows:** two location fixes, two headings (one with `true_deg = -1`, meaning invalid) and six events.
+- **Two `cloud` rows (v2):** a full copy after frame 5, then changes after frame 9 that remove one id and set one kept id plus an id above 2^53 with a sample count of 300 (above a byte).
 - **Float32 values are dyadic fractions,** so decimal ↔ float32 conversions are exact in every language.
 
 Every video frame shows its own log frame number as a 4 × 4 grid of black and white blocks (SPEC §17.4 P4). Block `i`, counted row-major from the top left, is white when bit `i` is set.
@@ -29,7 +32,7 @@ Every video frame shows its own log frame number as a 4 × 4 grid of black and w
   - matrices are flat column-major float lists (16 values for `camera` and `transform`, 9 for `intrinsics`)
   - `center` and `extent` are 3-float lists
   - point lists are lists of `[x, y, z]`
-  - `point_ids` are integers
+  - `point_ids`, `removed_ids` and `ids` are integers; `samples` are integers
 - **NULL columns are left out** of the row object. That applies to a `remove` row's geometry, so read them as missing = NULL.
 - **`meta`** is a string-to-string object.
 
@@ -43,4 +46,4 @@ PLANELAB_WRITE_FIXTURES=1 swift test --filter writeFixtures
 swift test        # the committed fixture must decode to expected.json again
 ```
 
-Then commit both files together, and make sure the Python contract test passes too.
+This rewrites `fixtures/v2/`; `fixtures/v1/` is never regenerated. Then commit both files together, and make sure the Python contract test passes too.

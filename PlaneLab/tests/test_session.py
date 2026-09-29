@@ -19,14 +19,14 @@ def set_meta(bundle: Path, key: str, value: str | None) -> None:
             db.execute("UPDATE meta SET value = ? WHERE key = ?", (value, key))
 
 
-@pytest.mark.parametrize("version", ["2", "one", None])
+@pytest.mark.parametrize("version", ["3", "one", None])
 def test_unknown_schema_version_is_refused_clearly(bundle_copy: Path, version: str | None) -> None:
     set_meta(bundle_copy, "schema_version", version)
     with pytest.raises(UnsupportedSchemaError) as caught:
         open_session(bundle_copy)
     message = str(caught.value)
     assert repr(version) in message
-    assert "knows 1" in message
+    assert "knows 1, 2" in message
 
 
 def zip_folder(folder: Path, archive: Path, *, nested: bool) -> None:

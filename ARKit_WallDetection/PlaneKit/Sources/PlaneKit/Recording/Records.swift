@@ -181,3 +181,19 @@ public struct EventRecord: Sendable, Equatable {
         self.detail = detail
     }
 }
+
+/// One `cloud` row (schema v2, SPEC P23): the phone's averaged cloud after `frameIndex`, either whole (`full`) or as
+/// the changes since the previous row (remove `removed`, then set every id in `set`).
+public struct CloudRecord: Sendable, Equatable {
+    public var frameIndex: Int
+    public var full: Bool
+    public var removed: [UInt64]
+    public var set: CloudState
+
+    public init(frameIndex: Int, full: Bool, removed: [UInt64] = [], set: CloudState) {
+        self.frameIndex = frameIndex
+        self.full = full
+        self.removed = removed
+        self.set = set
+    }
+}

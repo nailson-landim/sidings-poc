@@ -4,12 +4,13 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from conftest import FIXTURE_BUNDLE
 
 from planelab.accumulate import accumulate
-from planelab.cloud import CloudTimeline, build_cloud_timeline, cache_path, load_or_build
+from planelab.cloud import CloudTimeline, build_cloud_timeline, cache_path, load_or_build, recorded_timeline
 from planelab.config import AccumulateConfig, FitConfig, GateConfig, LabConfig
 from planelab.replay import Replay, load_replay
-from planelab.session import open_session
+from planelab.session import CloudRow, open_session
 from planelab.synth import SynthParams, write_synthetic
 
 
@@ -105,3 +106,42 @@ def test_empty_replay_gives_an_empty_timeline(room: tuple[Path, Replay]) -> None
     empty = Replay(**{**{f: getattr(replay, f) for f in replay.__slots__}, "idx": replay.idx[:0]})
     timeline = build_cloud_timeline(empty, LabConfig())
     assert len(timeline) == 0 and len(timeline.at(10)[0]) == 0
+
+
+def test_the_phones_rows_rebuild_the_recorded_cloud() -> None:
+    with open_session(FIXTURE_BUNDLE) as session:
+        timeline = recorded_timeline(session.cloud_rows())
+    a, b, big = 2 << 40, 2 << 40 | 1, 18_000_000_000_000_000_000
+    assert timeline.frames.tolist() == [5, 9]
+    assert timeline.slot_ids is not None and timeline.slot_ids.tolist() == [a, b, big]
+    assert len(timeline.at(4)[0]) == 0
+    for frame in (5, 8):
+        ids, points, samples = timeline.ids_at(frame)
+        assert ids.tolist() == [a, b] and samples.tolist() == [5, 6]
+        assert points.tolist() == [[2.0, 1.25, -4.0], [2.5, 1.125, -4.125]]
+    ids, points, samples = timeline.ids_at(9)
+    assert ids.tolist() == [b, big] and samples.tolist() == [7, 300]
+    assert points.tolist() == [[2.5, 1.0625, -4.25], [9.0, 1.25, -5.75]]
+
+
+def test_recorded_rows_from_a_first_delta_row_and_no_rows() -> None:
+    row = CloudRow(
+        frame_idx=5,
+        full=False,
+        removed=np.array([7], dtype=np.uint64),
+        ids=np.array([3], dtype=np.uint64),
+        points=np.ones((1, 3), dtype=np.float32),
+        samples=np.array([5], dtype=np.uint16),
+    )
+    ids, _, samples = recorded_timeline([row]).ids_at(5)
+    assert ids.tolist() == [3] and samples.tolist() == [5]
+    empty = recorded_timeline([])
+    assert len(empty) == 0 and len(empty.at(3)[0]) == 0
+
+
+def test_a_mac_timeline_has_no_ids(room: tuple[Path, Replay]) -> None:
+    _, replay = room
+    timeline = build_cloud_timeline(replay, LabConfig())
+    assert timeline.slot_ids is None
+    with pytest.raises(ValueError, match="no feature ids"):
+        timeline.ids_at(59)

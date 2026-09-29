@@ -50,9 +50,11 @@ public final class SessionWriter: @unchecked Sendable {
         var locations: [LocationRecord] = []
         var headings: [HeadingRecord] = []
         var events: [EventRecord] = []
+        var clouds: [CloudRecord] = []
 
         var isEmpty: Bool {
             frames.isEmpty && anchors.isEmpty && locations.isEmpty && headings.isEmpty && events.isEmpty
+                && clouds.isEmpty
         }
     }
 
@@ -134,6 +136,7 @@ public final class SessionWriter: @unchecked Sendable {
     public func enqueue(_ location: LocationRecord) { submit { $0.locations.append(location) } }
     public func enqueue(_ heading: HeadingRecord) { submit { $0.headings.append(heading) } }
     public func enqueue(_ event: EventRecord) { submit { $0.events.append(event) } }
+    public func enqueue(_ cloud: CloudRecord) { submit { $0.clouds.append(cloud) } }
 
     // MARK: Lifecycle
 
@@ -146,8 +149,9 @@ public final class SessionWriter: @unchecked Sendable {
         if let thrown { throw thrown }
     }
 
-    /// Stops accepting, commits the rest, writes the final `meta` rows, finishes the video and seals the database.
-    public func finish(stopReason: StopReason) async throws -> SessionSummary {
+    /// Stops accepting, commits the rest, writes the final `meta` rows (plus `meta`), finishes the video and seals
+    /// the database.
+    public func finish(stopReason: StopReason, meta: [(key: String, value: String)] = []) async throws -> SessionSummary {
         state.withLock { $0.accepting = false }
         let summary: SessionSummary = try await onQueue {
             self.timer?.cancel()
@@ -165,7 +169,7 @@ public final class SessionWriter: @unchecked Sendable {
                 try self.database.setMeta("frames_dropped", "\(summary.framesDropped)")
                 try self.database.setMeta("stopped_at", ISO8601DateFormatter().string(from: .now))
                 try self.database.setMeta("stop_reason", stopReason.rawValue)
-                for row in self.imageSkips.metaRows {
+                for row in self.imageSkips.metaRows + meta {
                     try self.database.setMeta(row.key, row.value)
                 }
             }
@@ -219,6 +223,7 @@ public final class SessionWriter: @unchecked Sendable {
                 for l in pending.locations { try database.insert(l) }
                 for h in pending.headings { try database.insert(h) }
                 for e in pending.events { try database.insert(e) }
+                for c in pending.clouds { try database.insert(c) }
             }
         } catch {
             state.withLock { $0.failed = true }

@@ -1,3 +1,4 @@
+import Synchronization
 import Foundation
 import simd
 import Testing
@@ -113,5 +114,118 @@ struct CloudMeshTests {
         let bands = CloudMesh.billboards(state, camera: Self.camera, size: 0.01, limit: 300)
         #expect(bands[2].count == 250)  // stride 4
         #expect(CloudMesh.billboards(state, camera: Self.camera, size: 0.01)[2].count == count)
+    }
+}
+
+@Suite("Live cloud recording")
+struct LiveCloudRecordingTests {
+    final class Rows: Sendable {
+        let rows = Mutex<[CloudRecord]>([])
+        var all: [CloudRecord] { rows.withLock { $0 } }
+        func append(_ row: CloudRecord) { rows.withLock { $0.append(row) } }
+    }
+
+    struct Rebuilt: Equatable {
+        var points: [UInt64: SIMD3<Float>] = [:]
+        var samples: [UInt64: UInt16] = [:]
+
+        init(_ rows: [CloudRecord]) {
+            for row in rows {
+                if row.full { self = Rebuilt([]) }
+                for id in row.removed {
+                    points[id] = nil
+                    samples[id] = nil
+                }
+                for (i, id) in row.set.ids.enumerated() {
+                    points[id] = row.set.points[i]
+                    samples[id] = row.set.samples[i]
+                }
+            }
+        }
+
+        init(_ state: CloudState) {
+            points = Dictionary(uniqueKeysWithValues: zip(state.ids, state.points))
+            samples = Dictionary(uniqueKeysWithValues: zip(state.ids, state.samples))
+        }
+    }
+
+    static let frames = CloudGoldenTests.golden.frames
+
+    static func feed(_ cloud: LiveCloud, _ frames: ArraySlice<CloudGoldenTests.Golden.Frame>, recording: Bool) {
+        for frame in frames {
+            cloud.ingest(
+                camera: CloudGoldenTests.camera(frame.camera), trackingNormal: frame.tracking == 2,
+                points: CloudGoldenTests.points(frame.points), ids: frame.ids, recordIndex: recording ? frame.idx : nil
+            )
+        }
+    }
+
+    /// The accumulator's state after `frame`, fed from scratch.
+    static func expected(after frame: Int, settings: CloudSettings) -> CloudState {
+        let pipeline = CloudPipeline(settings: settings)
+        for f in frames.prefix(frame + 1) {
+            pipeline.ingest(
+                camera: CloudGoldenTests.camera(f.camera), trackingNormal: f.tracking == 2,
+                points: CloudGoldenTests.points(f.points), ids: f.ids
+            )
+        }
+        return pipeline.accumulator.state()
+    }
+
+    @Test func rowsRebuildTheCloudAtEveryRow() {
+        let settings = CloudSettings(minSamples: 3, maxIds: 50)  // evictions, so rows carry removals
+        let cloud = LiveCloud(settings: settings)
+        let rows = Rows()
+        cloud.startRecording(snapshotEvery: 6, fullEvery: 2, sink: rows.append)
+        Self.feed(cloud, Self.frames[...], recording: true)
+        let summary = cloud.stopRecording(lastIndex: 29)
+        let written = rows.all
+        #expect(written.map(\.frameIndex) == [5, 11, 17, 23, 29])  // 29 already had a row: none added at Stop
+        #expect(written.map(\.full) == [true, false, true, false, true])
+        #expect(written.contains { !$0.removed.isEmpty })
+        for k in written.indices {
+            let frame = written[k].frameIndex
+            #expect(Rebuilt(Array(written.prefix(k + 1))) == Rebuilt(Self.expected(after: frame, settings: settings)))
+        }
+        #expect(summary.rows == 5)
+        #expect(summary.points == Self.expected(after: 29, settings: settings).count)
+        #expect(summary.framesDropped == 0)
+        #expect(summary.metaRows.map(\.key) == ["cloud_rows", "cloud_points", "cloud_frames_dropped"])
+    }
+
+    @Test func stopAddsARowForTheLastFrame() {
+        let cloud = LiveCloud(settings: CloudSettings())
+        let rows = Rows()
+        cloud.startRecording(snapshotEvery: 6, fullEvery: 50, sink: rows.append)
+        Self.feed(cloud, Self.frames.prefix(8), recording: true)
+        cloud.stopRecording(lastIndex: 7)
+        #expect(rows.all.map(\.frameIndex) == [5, 7])
+        #expect(Rebuilt(rows.all) == Rebuilt(Self.expected(after: 7, settings: CloudSettings())))
+        // Stopped: later frames grow the live cloud but write nothing.
+        Self.feed(cloud, Self.frames[8..<12], recording: true)
+        cloud.drain()
+        #expect(rows.all.count == 2)
+    }
+
+    @Test func recordingStartsFromAnEmptyCloud() {
+        let settings = CloudSettings(minSamples: 1)
+        let cloud = LiveCloud(settings: settings)
+        Self.feed(cloud, Self.frames.prefix(10), recording: false)
+        cloud.drain()
+        #expect(cloud.latest().state.count > 0)
+        let rows = Rows()
+        cloud.startRecording(snapshotEvery: 6, fullEvery: 50, sink: rows.append)
+        cloud.drain()
+        #expect(cloud.latest().state.count == 0)
+        // The recording's frames are numbered from 0, and the cloud before Record plays no part.
+        Self.feed(cloud, Self.frames.prefix(6), recording: true)
+        cloud.stopRecording(lastIndex: 5)
+        #expect(rows.all.map(\.frameIndex) == [5])
+        #expect(Rebuilt(rows.all) == Rebuilt(Self.expected(after: 5, settings: settings)))
+    }
+
+    @Test func stopWithoutARecordingDoesNothing() {
+        let cloud = LiveCloud(settings: CloudSettings())
+        #expect(cloud.stopRecording(lastIndex: 3) == LiveCloud.RecordingSummary())
     }
 }

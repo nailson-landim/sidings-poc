@@ -2,16 +2,19 @@ import Foundation
 import SQLite3
 import simd
 
-/// Schema version 1 of `session.sqlite` (SPEC §3.3).
+/// Schema version 2 of `session.sqlite` (SPEC §3.3): version 1 plus the `cloud` table (L12, P23).
 public enum SessionSchema {
-    public static let version = 1
+    public static let version = 2
+    /// Versions `SessionDatabase.open` reads. Version 1 files have no `cloud` table.
+    public static let readable: Set<Int> = [1, 2]
 
-    /// A copy of `session-format/schema_v1.sql`; `ContractTests` checks it matches the file exactly (SPEC §17.4 P2).
+    /// A copy of `session-format/schema_v2.sql`; `ContractTests` checks it matches the file exactly (SPEC §17.4 P2).
     public static let ddl = """
-    -- Plane Lab session format, schema version 1 (SPEC.md §3.3).
+    -- Plane Lab session format, schema version 2 (SPEC.md §3.3).
     -- The one source of the DDL (SPEC.md §17.4 P2). Swift (SessionSchema.ddl) and Python (planelab.schema.DDL)
     -- embed copies, and a test on each side checks the copy matches this file exactly.
-    -- Conventions: SPEC.md §3.2. BLOBs are little-endian float32 / uint64, packed with no padding.
+    -- Conventions: SPEC.md §3.2. BLOBs are little-endian float32 / uint64 / uint16, packed with no padding.
+    -- Version 2 adds the cloud table (SPEC.md L12, P23). Readers still open version 1 files, which have no cloud table.
 
     CREATE TABLE meta (
         key   TEXT PRIMARY KEY,
@@ -72,6 +75,18 @@ public enum SessionSchema {
         detail    TEXT    NOT NULL
     );
 
+    -- The phone's averaged cloud (CurvSurf's accumulator), every cloudSnapshotEvery recorded frames and at Stop.
+    -- full = 1: the whole cloud after frame_idx. full = 0: the changes since the previous row: remove removed_ids,
+    -- then set every id in ids to its point and sample count.
+    CREATE TABLE cloud (
+        frame_idx   INTEGER PRIMARY KEY,
+        full        INTEGER NOT NULL,
+        removed_ids BLOB    NOT NULL,
+        ids         BLOB    NOT NULL,
+        points      BLOB    NOT NULL,
+        samples     BLOB    NOT NULL
+    );
+
     """
 }
 
@@ -79,7 +94,7 @@ public enum SessionDatabaseError: Error, Equatable {
     case cannotOpen(String)
     case sqlite(String)
     /// `schema_version` is missing or isn't one this reader knows.
-    case unsupportedVersion(found: String?, supported: Int)
+    case unsupportedVersion(found: String?, supported: [Int])
     case corruptRow(String)
 }
 
@@ -89,6 +104,8 @@ public enum SessionDatabaseError: Error, Equatable {
 /// Not thread-safe: use one instance from one queue (the session writer's).
 public final class SessionDatabase {
     public let url: URL
+    /// `meta.schema_version` of the file.
+    public private(set) var schemaVersion = SessionSchema.version
     private var handle: OpaquePointer?
     private var statements: [String: OpaquePointer] = [:]
 
@@ -119,9 +136,10 @@ public final class SessionDatabase {
     public static func open(at url: URL, readOnly: Bool = true) throws -> SessionDatabase {
         let db = try connect(url, flags: readOnly ? SQLITE_OPEN_READONLY : SQLITE_OPEN_READWRITE)
         let version = try db.meta()["schema_version"]
-        guard version == "\(SessionSchema.version)" else {
-            throw SessionDatabaseError.unsupportedVersion(found: version, supported: SessionSchema.version)
+        guard let number = version.flatMap(Int.init), SessionSchema.readable.contains(number) else {
+            throw SessionDatabaseError.unsupportedVersion(found: version, supported: SessionSchema.readable.sorted())
         }
+        db.schemaVersion = number
         return db
     }
 
@@ -213,6 +231,20 @@ public final class SessionDatabase {
         try run("INSERT INTO event VALUES (?, ?, ?)", [.int(event.frameIndex), .text(event.kind), .text(event.detail)])
     }
 
+    public func insert(_ cloud: CloudRecord) throws {
+        guard cloud.set.points.count == cloud.set.ids.count, cloud.set.samples.count == cloud.set.ids.count else {
+            throw SessionDatabaseError.corruptRow("cloud \(cloud.frameIndex): ids, points and samples differ in length")
+        }
+        try run(
+            "INSERT INTO cloud VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                .int(cloud.frameIndex), .int(cloud.full ? 1 : 0), .blob(Packing.pack(cloud.removed)),
+                .blob(Packing.pack(cloud.set.ids)), .blob(Packing.pack(cloud.set.points)),
+                .blob(Packing.pack(cloud.set.samples)),
+            ]
+        )
+    }
+
     // MARK: Reading
 
     public func meta() throws -> [String: String] {
@@ -281,6 +313,23 @@ public final class SessionDatabase {
     public func events() throws -> [EventRecord] {
         try query("SELECT * FROM event ORDER BY rowid") { row in
             EventRecord(frameIndex: row.int(0), kind: row.text(1), detail: row.text(2))
+        }
+    }
+
+    /// The phone's averaged cloud rows, by frame. Empty for a version 1 file.
+    public func clouds() throws -> [CloudRecord] {
+        guard schemaVersion >= 2 else { return [] }
+        return try query("SELECT * FROM cloud ORDER BY frame_idx") { row in
+            guard let removed = Packing.ids(row.blob(2)),
+                  let ids = Packing.ids(row.blob(3)),
+                  let points = Packing.points(row.blob(4)),
+                  let samples = Packing.samples(row.blob(5)),
+                  points.count == ids.count, samples.count == ids.count
+            else { throw SessionDatabaseError.corruptRow("cloud \(row.int(0))") }
+            return CloudRecord(
+                frameIndex: row.int(0), full: row.int(1) != 0, removed: removed,
+                set: CloudState(ids: ids, points: points, samples: samples)
+            )
         }
     }
 

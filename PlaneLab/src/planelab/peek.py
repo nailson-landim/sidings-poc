@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 
 from planelab.info import summarize
-from planelab.session import AnchorEvent, Frame, Session
+from planelab.session import AnchorEvent, CloudRow, Frame, Session
 
 log = logging.getLogger(__name__)
 
@@ -123,6 +123,26 @@ ABOUT: list[tuple[str, str, str]] = [
     ("events", "frame_idx", "Frame the event belongs to."),
     ("events", "kind", "Event kind."),
     ("events", "detail", "Event detail."),
+    ("cloud_rows", "", "The phone's averaged cloud as recorded (schema v2, SPEC.md P23): one row per cloud row."),
+    ("cloud_rows", "frame_idx", "Frame after which the phone took this row."),
+    ("cloud_rows", "full", "1: a full copy of the cloud; 0: the changes since the previous row."),
+    ("cloud_rows", "removed", "Ids removed by this row (evicted from the accumulator)."),
+    ("cloud_rows", "changed", "Ids set by this row (new or updated averaged points)."),
+    ("cloud_rows", "points_after", "Averaged points in the phone's cloud after this row."),
+    ("cloud_points", "", "Every id a cloud row removes or sets, one row each."),
+    ("cloud_points", "frame_idx", "The cloud row's frame."),
+    ("cloud_points", "point_id", "Feature id (uint64 as text)."),
+    ("cloud_points", "change", "set or removed."),
+    ("cloud_points", "x", "Averaged position, ARKit world (m); NULL when removed."),
+    ("cloud_points", "y", "Averaged position (m); NULL when removed."),
+    ("cloud_points", "z", "Averaged position (m); NULL when removed."),
+    ("cloud_points", "samples", "Samples in the id's FIFO; NULL when removed."),
+    ("cloud_final", "", "The phone's averaged cloud after the last cloud row."),
+    ("cloud_final", "point_id", "Feature id (uint64 as text)."),
+    ("cloud_final", "x", "Averaged position, ARKit world (m)."),
+    ("cloud_final", "y", "Averaged position (m)."),
+    ("cloud_final", "z", "Averaged position (m)."),
+    ("cloud_final", "samples", "Samples in the id's FIFO."),
     ("meta", "", "The recording's meta table, copied as is."),
     ("meta", "key", "Meta key (SPEC.md §3.3)."),
     ("meta", "value", "Meta value."),
@@ -162,6 +182,12 @@ CREATE TABLE locations (
 );
 CREATE TABLE headings (frame_idx INTEGER, true_deg REAL, magnetic_deg REAL, acc_deg REAL);
 CREATE TABLE events (frame_idx INTEGER, kind TEXT, detail TEXT);
+CREATE TABLE cloud_rows (
+    frame_idx INTEGER PRIMARY KEY, full INTEGER, removed INTEGER, changed INTEGER, points_after INTEGER
+);
+CREATE TABLE cloud_points (frame_idx INTEGER, point_id TEXT, change TEXT, x REAL, y REAL, z REAL, samples INTEGER);
+CREATE INDEX cloud_points_idx ON cloud_points (frame_idx);
+CREATE TABLE cloud_final (point_id TEXT PRIMARY KEY, x REAL, y REAL, z REAL, samples INTEGER);
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE summary (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE _about (table_name TEXT, column_name TEXT, meaning TEXT);
@@ -354,6 +380,7 @@ def write_peek(session: Session, out: Path | None = None, csv_path: Path | None 
         db.executemany(
             "INSERT INTO events VALUES (?, ?, ?)", ((e.frame_idx, e.kind, e.detail) for e in session.events())
         )
+        _write_cloud(db, session.cloud_rows())
         db.executemany("INSERT INTO meta VALUES (?, ?)", sorted(session.meta.items()))
         db.executemany("INSERT INTO summary VALUES (?, ?)", _flatten("", asdict(summarize(session))))
         db.executemany("INSERT INTO _about VALUES (?, ?, ?)", ABOUT)
@@ -365,6 +392,35 @@ def write_peek(session: Session, out: Path | None = None, csv_path: Path | None 
         _frames_csv(target, csv_path)
     log.info("wrote %s", target)
     return target
+
+
+def _write_cloud(db: sqlite3.Connection, rows: list[CloudRow]) -> None:
+    """The phone's cloud rows, decoded, plus the cloud they add up to (``cloud_final``)."""
+    cloud: dict[int, tuple[float, float, float, int]] = {}
+    for row in rows:
+        if row.full:
+            cloud.clear()
+        for key in row.removed.tolist():
+            cloud.pop(key, None)
+        values = list(zip(row.ids.tolist(), row.points.tolist(), row.samples.tolist(), strict=True))
+        for key, (x, y, z), n in values:
+            cloud[key] = (x, y, z, n)
+        db.execute(
+            "INSERT INTO cloud_rows VALUES (?, ?, ?, ?, ?)",
+            (row.frame_idx, int(row.full), len(row.removed), len(row.ids), len(cloud)),
+        )
+        db.executemany(
+            "INSERT INTO cloud_points VALUES (?, ?, 'removed', NULL, NULL, NULL, NULL)",
+            ((row.frame_idx, str(key)) for key in row.removed.tolist()),
+        )
+        db.executemany(
+            "INSERT INTO cloud_points VALUES (?, ?, 'set', ?, ?, ?, ?)",
+            ((row.frame_idx, str(key), x, y, z, n) for key, (x, y, z), n in values),
+        )
+    db.executemany(
+        "INSERT INTO cloud_final VALUES (?, ?, ?, ?, ?)",
+        ((str(key), x, y, z, n) for key, (x, y, z, n) in sorted(cloud.items())),
+    )
 
 
 def _frames_csv(peek: Path, csv_path: Path) -> None:

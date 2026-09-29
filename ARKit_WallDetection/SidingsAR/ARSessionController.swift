@@ -120,7 +120,7 @@ final class ARSessionController: NSObject {
         if recorder.isRecording {
             recorder.stop(reason: .user)
         } else {
-            recorder.start(configuration: arView.session.configuration, mode: mode, lidar: isLiDARDevice)
+            recorder.start(configuration: arView.session.configuration, mode: mode, lidar: isLiDARDevice, cloud: liveCloud)
         }
     }
 
@@ -249,12 +249,16 @@ extension ARSessionController: @preconcurrency ARSessionDelegate {
             fps = Double(fpsWindow.frames) / (now - fpsWindow.start)
             fpsWindow = (now, 0)
         }
-        // One copy of the frame's pose and points, shared by the cloud and the recorder.
+        // One copy of the frame's pose and points, shared by the recorder and the cloud. While recording, the cloud
+        // sees only the frames the writer accepted, numbered like the recording (P22).
         let record = ARRecordAdapter.frameRecord(frame)
-        liveCloud.ingest(
-            camera: record.camera, trackingNormal: record.tracking == .normal, points: record.points, ids: record.pointIDs
-        )
-        recorder.capture(frame, metadata: record)
+        let index = recorder.capture(frame, metadata: record)
+        if index != nil || !recorder.isRecording {
+            liveCloud.ingest(
+                camera: record.camera, trackingNormal: record.tracking == .normal, points: record.points,
+                ids: record.pointIDs, recordIndex: index
+            )
+        }
         if (needsResolve || !dirty.isEmpty) && resolveThrottle.fire(now: now) {
             resolveAndRender(now: now)
         }

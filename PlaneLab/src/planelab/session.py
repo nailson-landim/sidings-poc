@@ -107,6 +107,21 @@ class Event:
     detail: str
 
 
+@dataclass(slots=True, frozen=True)
+class CloudRow:
+    """One ``cloud`` row (schema v2, SPEC.md P23): the phone's averaged cloud after ``frame_idx``, whole (``full``) or
+    as changes since the previous row (remove ``removed``, then set every id in ``ids``).
+    """
+
+    frame_idx: int
+    full: bool
+    removed: UInt64Array
+    ids: UInt64Array
+    points: Float32Array
+    """(K, 3) averaged positions, ARKit world."""
+    samples: npt.NDArray[np.uint16]
+
+
 def matrix(blob: bytes, size: int) -> Float32Array:
     """A column-major ``size`` x ``size`` float32 BLOB as a row-major array."""
     values = np.frombuffer(blob, dtype="<f4")
@@ -144,6 +159,7 @@ class Session:
             raise UnsupportedSchemaError(
                 f"{bundle.name}: schema_version {version!r} is not supported (this reader knows {supported})"
             )
+        self.schema_version = int(version)
         log.info("opened %s (%d frames)", bundle, self.frame_count())
 
     def __enter__(self) -> Self:
@@ -210,6 +226,27 @@ class Session:
 
     def events(self) -> list[Event]:
         return [Event(*r) for r in self._db.execute("SELECT * FROM event ORDER BY rowid")]
+
+    def cloud_rows(self) -> list[CloudRow]:
+        """The phone's averaged cloud (schema v2), by frame. Empty for version 1 files."""
+        if self.schema_version < 2:
+            return []
+        rows = []
+        for frame_idx, full, removed, ids, points, samples in self._db.execute(
+            "SELECT * FROM cloud ORDER BY frame_idx"
+        ):
+            row = CloudRow(
+                frame_idx=int(frame_idx),
+                full=bool(full),
+                removed=identifiers(removed),
+                ids=identifiers(ids),
+                points=vectors(points),
+                samples=np.frombuffer(samples, dtype="<u2").astype(np.uint16),
+            )
+            if not len(row.ids) == len(row.points) == len(row.samples):
+                raise SessionError(f"cloud row {frame_idx}: ids, points and samples differ in length")
+            rows.append(row)
+        return rows
 
 
 def _frame(row: tuple[Any, ...]) -> Frame:

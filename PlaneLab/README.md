@@ -36,6 +36,7 @@ python -m planelab synth <out.planelab> --scene facade|edges|room [--seed 7 --se
 | `features` | feature id | first and last frame, times seen, mean position, **spread** (how much ARKit's estimate of that point moved), mean distance |
 | `anchors` | ARKit plane callback | event, alignment, classification, position, normal, extent, boundary |
 | `locations`, `headings`, `events`, `meta` | row of the original | readable copies (ISO times) |
+| `cloud_rows`, `cloud_points`, `cloud_final` | phone cloud row; id per row; id | the averaged cloud the phone recorded (schema v2): each row's size, every id it removes or sets, and the cloud after the last row |
 | `summary` | field | the `planelab info` numbers |
 
 The views `frames_without_image`, `slow_frames` (`dt_ms > 25`) and `tracking_not_normal` list the frames worth a look. Open the copy in any SQLite browser (DB Browser for SQLite, TablePlus), or with the `sqlite3` shell:
@@ -61,6 +62,7 @@ points    p50 6.22 m, p95 9.30 m, max 9.69 m (36 points)
 anchors   2 ARKit planes: 2 add, 1 update, 1 remove
 site      -12.976562, -38.476562 (± 4.5 m); 2 fixes, 2 headings
 events    6
+cloud     phone: 2 averaged points after 2 rows (0 frames missed)
 ```
 
 *fps delivered* comes from the frame times, not from ARKit's promised format. The iPhone 13 has delivered 30 Hz against a promised 60 (SPEC §3.4, §15 R1). *points* is the distance from the camera to every raw feature point (E1).
@@ -101,6 +103,7 @@ with open_session(Path("~/PlaneLab/sessions/20260928-101500.planelab")) as sessi
         frame.camera  # (4, 4) world <- camera, row-major, ARKit axes (+Y up)
         frame.points  # (N, 3) float32 raw feature points, world
         frame.point_ids  # (N,) uint64
+    session.cloud_rows()  # the phone's averaged cloud (schema v2), [] for version 1 files
     session.first_image_idx()  # where the video clip starts in Blender (SPEC §15 R2)
     session.delivered_fps()  # Blender's playback rate (SPEC §3.4)
 ```
@@ -110,7 +113,7 @@ with open_session(Path("~/PlaneLab/sessions/20260928-101500.planelab")) as sessi
 ```
 PlaneLab/
 ├── src/planelab/     core, no bpy
-│   ├── schema.py     DDL, a copy of ../session-format/schema_v1.sql (tested to match)
+│   ├── schema.py     DDL, a copy of ../session-format/schema_v2.sql (tested to match); versions 1 and 2 are read
 │   ├── session.py    reader: folders and zips, version check, BLOB decoding
 │   ├── info.py       the summary behind `planelab info` and the Blender panel
 │   ├── peek.py       `planelab peek`: the decoded, documented copy of a recording
@@ -121,7 +124,7 @@ PlaneLab/
 │   ├── config.py     LabConfig: every lab setting (filter, gate, accumulate, fit, track), TOML in and out
 │   ├── gate.py       stages 2-3: near/far filter, CurvSurf's motion gate (intended/upstream/off), per-point parallax gate
 │   ├── accumulate.py stage 4: CurvSurf's FeatureCompressor on numpy ring buffers; accumulate(replay, config)
-│   ├── cloud.py      the averaged cloud at any frame: change snapshots, cached in <bundle>/lab/cloud-<hash>.npz
+│   ├── cloud.py      the averaged cloud at any frame: the Mac's recompute (cached in <bundle>/lab/cloud-<hash>.npz) or the phone's rows
 │   ├── writer.py     a minimal schema-v1 writer, used only by synth
 │   ├── cli.py        python -m planelab
 │   └── log.py        silent rotating log file, plus stderr for the CLI
@@ -137,7 +140,7 @@ PlaneLab/
 
 ```bash
 ruff check . && ruff format --check .
-pytest --cov=planelab --cov-fail-under=85     # 121 tests incl. headless-Blender ones, about 99 % coverage
+pytest --cov=planelab --cov-fail-under=85     # 128 tests incl. headless-Blender ones, about 99 % coverage
 ```
 
 The contract test reads `../session-format/fixtures/v1/`, written by the Swift recorder, and compares every table with `expected.json` (SPEC S7). The core also runs under Blender's own interpreter:

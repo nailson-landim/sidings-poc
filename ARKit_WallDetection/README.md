@@ -122,6 +122,7 @@ The gap between the origin and the center shows that ARKit anchors a plane where
   - The 6-buffer pixel pool is allocated when Record is tapped (T10). Earlier recordings, with 4 buffers allocated during capture, lost images at frames 5–9.
   - ARKit's plane anchors are recorded too: every add, update and remove callback, stamped with the frame. Planes that already exist when Record is tapped are logged as added at frame 0.
   - **Mark** (flag, while recording) adds a `mark N` event, which becomes a timeline marker in Blender.
+  - **The averaged cloud is recorded too** (schema v2, `../SPEC.md` T29): Record clears the live cloud, then every 6 recorded frames a `cloud` row holds what changed (a full copy every 50 rows), plus a last row at Stop. `meta.cloud_rows`, `cloud_points` and `cloud_frames_dropped` sum it up, and `planelab info` prints it.
   - Get sessions onto the Mac with `devicectl` (see `CLAUDE.md`), then run `python -m planelab info <bundle>` (`../PlaneLab/`).
 - **Reset:** clears all anchors and tracker state, and restarts tracking.
 
@@ -264,7 +265,7 @@ ARKit_WallDetection/
 │   │       ├── Records.swift       FrameRecord, AnchorRecord, LocationRecord, HeadingRecord, EventRecord
 │   │       ├── RecordingPolicy.swift  StopReason, DiskGuard, TrackingChangeDetector, ImageSkipLog
 │   │       ├── Packing.swift       Little-endian BLOB layouts (matrices, points, ids) with no simd padding
-│   │       ├── SessionDatabase.swift  session.sqlite: schema v1 (copy of ../session-format/schema_v1.sql), WAL, seal
+│   │       ├── SessionDatabase.swift  session.sqlite: schema v2 (copy of ../session-format/schema_v2.sql; reads v1 too), WAL, seal
 │   │       ├── SessionWriter.swift    One recording bundle off the capture thread: batched commits, frame drops, finish
 │   │       └── VideoWriter.swift   HEVC video.mov: time = frame index / fps, gaps, fragments, capped pixel pool
 │   └── Tests/PlaneKitTests/        Swift Testing suites + fixtures (Recording/ has its own helpers)
@@ -274,7 +275,7 @@ ARKit_WallDetection/
 
 ## Testing
 
-`cd PlaneKit && swift test` runs 99 Swift Testing cases in 16 suites:
+`cd PlaneKit && swift test` runs 106 Swift Testing cases in 17 suites:
 
 | Suite | Covers |
 |---|---|
@@ -290,9 +291,10 @@ ARKit_WallDetection/
 | Averaged cloud golden | The Swift pipeline replays `../session-format/fixtures/cloud/golden.json` (written by Plane Lab's accumulator) under five settings: same ids and sample counts, positions within 2e-6 m. Regenerate on the Python side: `python scripts/cloud_golden.py` |
 | Recording policy | `StopReason` values match the spec, the low-disk rule, tracking events at the start and on change only, image skips counted per frame and reported once per burst |
 | BLOB packing | Column-major little-endian matrices (64 and 36 bytes), 12-byte points, uint64 ids, empty arrays, wrong sizes rejected |
-| Session database | Every table round-trips, a sealed session is one file, empty point BLOBs aren't NULL, mismatched points/ids refused, unknown `schema_version` refused |
+| Session database | Every table round-trips (including `cloud`), a sealed session is one file, empty point BLOBs aren't NULL, mismatched points/ids and cloud arrays refused, unknown `schema_version` refused (1 and 2 are read) |
 | Session writer | Batched commits (manual and timer), frame numbers with no holes, a stalled queue dropping whole frames in under 50 ms without blocking, committed batches surviving an unfinished session, finish writing counters and a matching video into a one-file bundle, nothing accepted after finish |
-| Session-format contract | The embedded DDL matches `../session-format/schema_v1.sql`; the committed fixture decodes to `expected.json`, and its video holds exactly the `has_image` frames with the right numbers. `PLANELAB_WRITE_FIXTURES=1 swift test --filter writeFixtures` regenerates it |
+| Session-format contract | The embedded DDL matches `../session-format/schema_v2.sql`; the committed v2 fixture decodes to `expected.json` (including its `cloud` rows), and its video holds exactly the `has_image` frames with the right numbers; the v1 fixture still decodes. `PLANELAB_WRITE_FIXTURES=1 swift test --filter writeFixtures` regenerates v2 |
+| Live cloud recording | Rows every 6 recorded frames rebuild the accumulator's cloud at each row (full copies and changes with removals), Stop adds a row for the last frame and nothing after, Record starts from an empty cloud |
 | Video writer | HEVC timestamps with gaps (including a leading gap), keyframe spacing, frame numbers surviving encoding, a full pool skipping instead of blocking, out-of-order frames, plane-by-plane copy, and a half-written movie readable up to its last fragment. `PLANELAB_SPIKE_OUT=<dir> swift test --filter spikeVideo` writes the 1920 × 1440 spike video for Plane Lab T2 |
 
 Anything that can be expressed without ARKit or RealityKit goes into `PlaneKit`, with tests. The app target has no unit tests; its behavior is checked on device against the checkpoints in `tasks/todo.md`.

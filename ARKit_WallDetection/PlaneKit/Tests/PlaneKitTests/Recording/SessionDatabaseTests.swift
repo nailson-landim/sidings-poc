@@ -16,11 +16,14 @@ struct SessionDatabaseTests {
             for l in fixture.locations { try db.insert(l) }
             for h in fixture.headings { try db.insert(h) }
             for e in fixture.events { try db.insert(e) }
+            for c in fixture.clouds { try db.insert(c) }
         }
         try db.seal()
 
         let read = try SessionDatabase.open(at: url)
-        #expect(try read.meta() == ["schema_version": "1", "device_model": "test"])
+        #expect(read.schemaVersion == 2)
+        #expect(try read.meta() == ["schema_version": "2", "device_model": "test"])
+        #expect(try read.clouds() == fixture.clouds)
         #expect(try read.frames() == fixture.frames)
         #expect(try read.anchors() == fixture.anchors)
         #expect(try read.locations() == fixture.locations)
@@ -78,11 +81,19 @@ struct SessionDatabaseTests {
         let folder = TempFolder()
         let url = folder.file("session.sqlite")
         let db = try SessionDatabase.create(at: url)
-        try db.setMeta("schema_version", "2")
+        try db.setMeta("schema_version", "3")
         db.close()
-        #expect(throws: SessionDatabaseError.unsupportedVersion(found: "2", supported: 1)) {
+        #expect(throws: SessionDatabaseError.unsupportedVersion(found: "3", supported: [1, 2])) {
             try SessionDatabase.open(at: url)
         }
+    }
+
+    @Test func aCloudRowWithMismatchedArraysIsRefused() throws {
+        let folder = TempFolder()
+        let db = try SessionDatabase.create(at: folder.file("session.sqlite"))
+        var row = ContractFixture.records.clouds[0]
+        row.set.samples.removeLast()
+        #expect(throws: SessionDatabaseError.self) { try db.insert(row) }
     }
 
     @Test func createRefusesAnExistingFile() throws {

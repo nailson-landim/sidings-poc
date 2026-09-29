@@ -4,6 +4,9 @@ The accumulator runs over the recording once. Every ``every`` frames (and on the
 what changed since the previous one: slots emptied by eviction, then slots whose averaged point changed. Every
 ``full_every`` snapshots a full copy is kept too, so any frame is rebuilt from one full copy plus at most
 ``full_every - 1`` changes. The result is cached next to the recording, keyed by the settings that shape it.
+
+A schema v2 recording also holds the phone's own cloud (``cloud`` rows, SPEC.md L12, P23). ``recorded_timeline``
+turns those rows into the same ``CloudTimeline``, so Blender shows either one the same way.
 """
 
 import hashlib
@@ -17,14 +20,17 @@ import numpy.typing as npt
 from planelab.accumulate import Accumulator, run_frames
 from planelab.config import LabConfig, config_rows
 from planelab.replay import Replay
+from planelab.session import CloudRow
 
 log = logging.getLogger(__name__)
 
 Int64Array = npt.NDArray[np.int64]
 Float32Array = npt.NDArray[np.float32]
 Int32Array = npt.NDArray[np.int32]
+UInt64Array = npt.NDArray[np.uint64]
 
-FORMAT = "cloud-v1"
+FORMAT = "cloud-v2"
+"""v2 stores which snapshots have a full copy (``full_rows``); v1 caches are rebuilt."""
 
 
 @dataclass(slots=True, frozen=True)
@@ -58,13 +64,16 @@ def _pack(items: list[tuple[Int64Array, npt.NDArray[np.floating], Int32Array]]) 
 class CloudTimeline:
     frames: Int64Array
     """(S,) the frame each snapshot was taken after."""
-    full_every: int
+    full_rows: Int64Array
+    """Ascending snapshot positions that have a full copy; the first is 0."""
     capacity: int
-    """Storage slots used by the accumulator (the rebuilt state is indexed by slot)."""
+    """Storage slots (the rebuilt state is indexed by slot: an accumulator slot, or an id's rank for the phone's)."""
     removed: _Packed
     changed: _Packed
     fulls: _Packed
-    """One entry per ``full_every`` snapshots: the whole cloud after that snapshot."""
+    """One entry per ``full_rows`` position: the whole cloud after that snapshot."""
+    slot_ids: UInt64Array | None = None
+    """The phone's timeline: the feature id of each slot (ascending). None for the Mac's (slots are storage)."""
     _cache_key: int = -1
     _cache: tuple[npt.NDArray[np.bool_], Float32Array, Int32Array] | None = None
 
@@ -79,16 +88,27 @@ class CloudTimeline:
         valid, points, samples = self._state(k)
         return points[valid], samples[valid]
 
+    def ids_at(self, idx: int) -> tuple[UInt64Array, Float32Array, Int32Array]:
+        """Like ``at``, with each point's feature id, ascending. Only the phone's timeline knows the ids."""
+        if self.slot_ids is None:
+            raise ValueError("this timeline has no feature ids (it was built on the Mac)")
+        k = int(np.searchsorted(self.frames, idx, side="right")) - 1
+        if k < 0:
+            return np.empty(0, np.uint64), np.empty((0, 3), np.float32), np.empty(0, np.int32)
+        valid, points, samples = self._state(k)
+        return self.slot_ids[valid], points[valid], samples[valid]
+
     def _state(self, k: int) -> tuple[npt.NDArray[np.bool_], Float32Array, Int32Array]:
         if self._cache is not None and self._cache_key == k:
             return self._cache
-        base = k // self.full_every
+        which = int(np.searchsorted(self.full_rows, k, side="right")) - 1
+        start = int(self.full_rows[which])
         valid = np.zeros(self.capacity, dtype=bool)
         points = np.zeros((self.capacity, 3), dtype=np.float32)
         samples = np.zeros(self.capacity, dtype=np.int32)
-        slots, full_points, full_samples = self.fulls.item(base)
+        slots, full_points, full_samples = self.fulls.item(which)
         valid[slots], points[slots], samples[slots] = True, full_points, full_samples
-        for j in range(base * self.full_every + 1, k + 1):
+        for j in range(start + 1, k + 1):
             valid[self.removed.item(j)[0]] = False
             slots, changed_points, changed_samples = self.changed.item(j)
             valid[slots], points[slots], samples[slots] = True, changed_points, changed_samples
@@ -99,7 +119,8 @@ class CloudTimeline:
         arrays: dict[str, np.ndarray] = {
             "format": np.array(FORMAT),
             "frames": self.frames,
-            "meta": np.array([self.full_every, self.capacity], dtype=np.int64),
+            "full_rows": self.full_rows,
+            "capacity": np.array(self.capacity, dtype=np.int64),
         }
         for name in ("removed", "changed", "fulls"):
             packed: _Packed = getattr(self, name)
@@ -118,13 +139,20 @@ class CloudTimeline:
                 name: _Packed(*(data[f"{name}_{part}"] for part in ("offsets", "slots", "points", "samples")))
                 for name in ("removed", "changed", "fulls")
             }
-            full_every, capacity = (int(v) for v in data["meta"])
-            return cls(data["frames"], full_every, capacity, packs["removed"], packs["changed"], packs["fulls"])
+            return cls(
+                data["frames"],
+                data["full_rows"],
+                int(data["capacity"]),
+                packs["removed"],
+                packs["changed"],
+                packs["fulls"],
+            )
 
 
 def build_cloud_timeline(replay: Replay, config: LabConfig, every: int = 6, full_every: int = 50) -> CloudTimeline:
     accumulator = Accumulator(config.accumulate)
     frames: list[int] = []
+    full_rows: list[int] = []
     removed, changed, fulls = [], [], []
     last = int(replay.idx[-1]) if len(replay) else -1
     for idx, acc in run_frames(replay, config, accumulator):
@@ -132,17 +160,45 @@ def build_cloud_timeline(replay: Replay, config: LabConfig, every: int = 6, full
             continue
         gone, slots, points, samples = acc.take_changes()
         if len(frames) % full_every == 0:
+            full_rows.append(len(frames))
             fulls.append(acc.state())
         frames.append(idx)
         removed.append((gone, np.empty((0, 3)), np.empty(0, np.int32)))
         changed.append((slots, points, samples))
     return CloudTimeline(
         frames=np.array(frames, dtype=np.int64),
-        full_every=full_every,
+        full_rows=np.array(full_rows or [0], dtype=np.int64),
         capacity=accumulator.capacity,
         removed=_pack(removed),
         changed=_pack(changed),
         fulls=_pack(fulls),
+    )
+
+
+def recorded_timeline(rows: list[CloudRow]) -> CloudTimeline:
+    """The phone's cloud rows as a timeline. Ids become slots by rank; a first row that isn't full starts from empty."""
+    every_id = [r.ids for r in rows] + [r.removed for r in rows]
+    ids = np.unique(np.concatenate(every_id)) if rows else np.empty(0, np.uint64)
+    empty = (np.empty(0, np.int64), np.empty((0, 3), np.float32), np.empty(0, np.int32))
+    removed, changed, fulls, full_rows = [], [], [], []
+    for k, row in enumerate(rows):
+        entry = (np.searchsorted(ids, row.ids).astype(np.int64), row.points, row.samples.astype(np.int32))
+        if row.full or k == 0:
+            full_rows.append(k)
+            fulls.append(entry)
+            removed.append(empty)
+            changed.append(empty)
+        else:
+            removed.append((np.searchsorted(ids, row.removed).astype(np.int64), *empty[1:]))
+            changed.append(entry)
+    return CloudTimeline(
+        frames=np.array([r.frame_idx for r in rows], dtype=np.int64),
+        full_rows=np.array(full_rows or [0], dtype=np.int64),
+        capacity=len(ids),
+        removed=_pack(removed),
+        changed=_pack(changed),
+        fulls=_pack(fulls),
+        slot_ids=ids.astype(np.uint64),
     )
 
 

@@ -1,15 +1,3 @@
-"""The session format's schema (SPEC.md §3.3).
-
-``DDL`` is a copy of ``session-format/schema_v2.sql`` (version 2 adds the ``cloud`` table, SPEC.md L12);
-``tests/test_contract.py`` checks it matches the file exactly (SPEC.md §17.4 P2). The copy lives here so the package
-works inside Blender with no repository around it.
-"""
-
-SCHEMA_VERSION = 2
-SUPPORTED_VERSIONS: tuple[int, ...] = (1, 2)
-"""Version 1 files (before L12) have no ``cloud`` table and stay readable."""
-
-DDL = """\
 -- Plane Lab session format, schema version 2 (SPEC.md §3.3).
 -- The one source of the DDL (SPEC.md §17.4 P2). Swift (SessionSchema.ddl) and Python (planelab.schema.DDL)
 -- embed copies, and a test on each side checks the copy matches this file exactly.
@@ -86,4 +74,3 @@ CREATE TABLE cloud (
     points      BLOB    NOT NULL,
     samples     BLOB    NOT NULL
 );
-"""

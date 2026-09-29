@@ -37,6 +37,19 @@ public enum Packing {
         return words.withUnsafeBytes { Data($0) }
     }
 
+    /// N × u16 (averaged-cloud sample counts).
+    public static func pack(_ samples: [UInt16]) -> Data {
+        let words = samples.map(\.littleEndian)
+        return words.withUnsafeBytes { Data($0) }
+    }
+
+    public static func samples(_ data: Data) -> [UInt16]? {
+        guard data.count % 2 == 0 else { return nil }
+        var words = [UInt16](repeating: 0, count: data.count / 2)
+        _ = words.withUnsafeMutableBytes { data.copyBytes(to: $0) }
+        return words.map { UInt16(littleEndian: $0) }
+    }
+
     public static func matrix4(_ data: Data) -> simd_float4x4? {
         guard let f = readFloats(data), f.count == 16 else { return nil }
         return simd_float4x4(

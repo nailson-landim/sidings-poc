@@ -16,6 +16,18 @@ struct SessionWriterTests {
         #expect(try committedFrames(folder) == 10)
     }
 
+    @Test func cloudRowsAndStopMetaAreWritten() async throws {
+        let folder = TempFolder()
+        let writer = try SessionWriter(bundle: folder.url, meta: [], videoSize: nil, autoCommit: false)
+        for _ in 0..<6 { writer.enqueue(Self.frame, image: nil) }
+        let rows = ContractFixture.records.clouds
+        rows.forEach(writer.enqueue)
+        _ = try await writer.finish(stopReason: .user, meta: [("cloud_rows", "2")])
+        let db = try SessionDatabase.open(at: folder.file("session.sqlite"))
+        #expect(try db.clouds() == rows)
+        #expect(try db.meta()["cloud_rows"] == "2")
+    }
+
     @Test func timerCommitsWithoutAFlush() async throws {
         let folder = TempFolder()
         var constants = RecorderConstants()

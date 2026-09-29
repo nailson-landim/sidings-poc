@@ -27,23 +27,32 @@ final class SessionRecorder {
     private(set) var marks = 0
 
     @ObservationIgnored private var writer: SessionWriter?
+    /// The live cloud whose rows go into this recording (`../SPEC.md` T29, P22, P23).
+    @ObservationIgnored private var cloud: LiveCloud?
     @ObservationIgnored private var firstTime: TimeInterval?
     @ObservationIgnored private var statsThrottle = Throttle(interval: 1.0)
     @ObservationIgnored private var tracking = TrackingChangeDetector()
     @ObservationIgnored private let diskGuard = DiskGuard(constants: .current)
     @ObservationIgnored private let logger = Logger(subsystem: "br.com.neuralnexgen.sidingsar", category: "recorder")
 
-    func start(configuration: ARConfiguration?, mode: DetectionMode, lidar: Bool) {
+    func start(configuration: ARConfiguration?, mode: DetectionMode, lidar: Bool, cloud: LiveCloud) {
         guard !isRecording else { return }
         let format = configuration?.videoFormat
         let size = format.map { (width: Int($0.imageResolution.width), height: Int($0.imageResolution.height)) }
         do {
             let bundle = try Self.sessionsFolder().appendingPathComponent("\(Self.stamp()).planelab")
-            writer = try SessionWriter(
+            let created = try SessionWriter(
                 bundle: bundle,
                 meta: Self.meta(configuration: configuration, mode: mode, lidar: lidar),
                 videoSize: size
             )
+            writer = created
+            // Record clears the cloud, so the recorded cloud starts empty at frame 0 (P22).
+            let constants = RecorderConstants.current
+            cloud.startRecording(snapshotEvery: constants.cloudSnapshotEvery, fullEvery: constants.cloudFullEvery) { row in
+                created.enqueue(row)
+            }
+            self.cloud = cloud
             logger.info("Recording to \(bundle.lastPathComponent, privacy: .public)")
         } catch {
             logger.error("Recording could not start: \(error.localizedDescription, privacy: .public)")
@@ -64,10 +73,23 @@ final class SessionRecorder {
     }
 
     /// Called from `session(_:didUpdate:)` for every frame, with `ARRecordAdapter.frameRecord(frame)`. Never blocks
-    /// and never keeps `frame`.
-    func capture(_ frame: ARFrame, metadata: FrameRecord) {
-        guard isRecording, let writer else { return }
+    /// and never keeps `frame`. Returns the frame's `idx`, or nil when not recording or the writer dropped it.
+    @discardableResult
+    func capture(_ frame: ARFrame, metadata: FrameRecord) -> Int? {
+        guard isRecording, let writer else { return nil }
         firstTime = firstTime ?? frame.timestamp
+        // Stop checks come before this frame is recorded, so the cloud's last row covers exactly the recorded frames.
+        if statsThrottle.fire(now: frame.timestamp) {
+            let free = Self.freeBytes(at: writer.bundle)
+            refreshStats(now: frame.timestamp, writer: writer, freeBytes: free)
+            if writer.hasFailed {
+                stop(reason: .error)
+                return nil
+            } else if diskGuard.shouldStop(freeBytes: free) {
+                stop(reason: .lowDisk)
+                return nil
+            }
+        }
 
         var image: PixelBufferBox?
         if let buffer = writer.makeImageBuffer(), VideoWriter.copyPixels(from: frame.capturedImage, to: buffer) {
@@ -86,15 +108,7 @@ final class SessionRecorder {
             writer.enqueue(EventRecord(frameIndex: index, kind: "tracking", detail: change))
         }
 
-        if statsThrottle.fire(now: frame.timestamp) {
-            let free = Self.freeBytes(at: writer.bundle)
-            refreshStats(now: frame.timestamp, writer: writer, freeBytes: free)
-            if writer.hasFailed {
-                stop(reason: .error)
-            } else if diskGuard.shouldStop(freeBytes: free) {
-                stop(reason: .lowDisk)
-            }
-        }
+        return index
     }
 
     /// ARKit plane callbacks (SPEC §4, T11). Callbacks only record: one queued row per plane, stamped with the last
@@ -119,11 +133,14 @@ final class SessionRecorder {
         guard isRecording, let writer else { return }
         isRecording = false
         self.writer = nil
+        // The cloud's last row reaches the writer before it stops accepting (a few ms of waiting at most).
+        let cloudSummary = cloud?.stopRecording(lastIndex: writer.lastFrameIndex)
+        cloud = nil
         writer.enqueue(EventRecord(frameIndex: max(writer.lastFrameIndex, 0), kind: "record", detail: "stop:\(reason.rawValue)"))
         let name = writer.bundle.lastPathComponent
         Task {
             do {
-                let summary = try await writer.finish(stopReason: reason)
+                let summary = try await writer.finish(stopReason: reason, meta: cloudSummary?.metaRows ?? [])
                 logger.info("Saved \(name, privacy: .public): \(summary.framesLogged) frames, \(summary.framesWithImage) images, \(summary.framesDropped) dropped")
                 let reasonNote = reason == .user ? "" : " (stopped: \(reason.rawValue))"
                 lastResult = "Saved \(name): \(summary.framesLogged) frames, \(summary.framesWithImage) images\(reasonNote)"

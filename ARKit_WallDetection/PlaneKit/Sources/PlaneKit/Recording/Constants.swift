@@ -35,6 +35,10 @@ public struct RecorderConstants: Sendable, Equatable {
     public var cloudMinSamples = 5
     public var cloudZScore = 2.0
     public var cloudMaxIds = 100_000
+    /// While recording, one `cloud` row every this many recorded frames (P23), and one at Stop.
+    public var cloudSnapshotEvery = 6
+    /// Every this many rows (and the first) is a full copy of the cloud; the others hold changes.
+    public var cloudFullEvery = 50
 
     public init() {}
 

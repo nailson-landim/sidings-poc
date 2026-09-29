@@ -3,15 +3,17 @@ import simd
 import Testing
 @testable import PlaneKit
 
-/// The session-format contract (SPEC §3.5, §17.4 P2 and P3). `session-format/fixtures/v1/` holds a tiny session
+/// The session-format contract (SPEC §3.5, §17.4 P2 and P3). `session-format/fixtures/v2/` holds a tiny session
 /// written by the real Swift writer plus `expected.json`, the values it must decode to. Python checks the same pair.
+/// `fixtures/v1/` is the version 1 fixture, kept to prove old recordings stay readable.
 ///
 /// Regenerate after a deliberate format change (and bump `schema_version`):
 /// `PLANELAB_WRITE_FIXTURES=1 swift test --filter writeFixtures`
 @Suite("Session-format contract", .serialized)
 struct ContractTests {
-    static let schemaFile = repositoryRoot.appendingPathComponent("session-format/schema_v1.sql")
-    static let fixtureFolder = repositoryRoot.appendingPathComponent("session-format/fixtures/v1")
+    static let schemaFile = repositoryRoot.appendingPathComponent("session-format/schema_v2.sql")
+    static let fixtureFolder = repositoryRoot.appendingPathComponent("session-format/fixtures/v2")
+    static let version1Folder = repositoryRoot.appendingPathComponent("session-format/fixtures/v1")
     static let bundle = fixtureFolder.appendingPathComponent("tiny.planelab")
     static let expectedFile = fixtureFolder.appendingPathComponent("expected.json")
 
@@ -35,6 +37,8 @@ struct ContractTests {
         #expect(actual.location == expected.location)
         #expect(actual.heading == expected.heading)
         #expect(actual.event == expected.event)
+        #expect(actual.cloud == expected.cloud)
+        #expect(actual.cloud?.count == 2)
 
         // The video holds exactly the frames with has_image = 1, each showing its own number (P4).
         let withImage = expected.frame.filter { $0.has_image == 1 }.map(\.idx)
@@ -42,6 +46,16 @@ struct ContractTests {
         #expect(try await VideoProbe.read(video, fps: 60).frames == withImage)
         let decoded = try await VideoProbe.decodeNumbers(video, fps: 60)
         #expect(decoded.map(\.frame) == decoded.map(\.number))
+    }
+
+    @Test func version1FixtureStillDecodes() throws {
+        let expectedFile = Self.version1Folder.appendingPathComponent("expected.json")
+        let expected = try JSONDecoder().decode(ExpectedSession.self, from: Data(contentsOf: expectedFile))
+        let db = try SessionDatabase.open(at: Self.version1Folder.appendingPathComponent("tiny.planelab/session.sqlite"))
+        #expect(db.schemaVersion == 1)
+        #expect(try db.clouds().isEmpty)
+        #expect(try ExpectedSession(db) == expected)
+        #expect(expected.cloud == nil)
     }
 }
 
@@ -61,9 +75,12 @@ enum ContractFixture {
         var locations: [LocationRecord]
         var headings: [HeadingRecord]
         var events: [EventRecord]
+        var clouds: [CloudRecord]
     }
 
-    static let records = Records(frames: frames, anchors: anchors, locations: locations, headings: headings, events: events)
+    static let records = Records(
+        frames: frames, anchors: anchors, locations: locations, headings: headings, events: events, clouds: clouds
+    )
 
     static var meta: [(key: String, value: String)] {
         [
@@ -75,6 +92,7 @@ enum ContractFixture {
             ("started_at", "2026-09-28T12:00:00Z"), ("stopped_at", "2026-09-28T12:00:01Z"), ("stop_reason", "user"),
             ("frames_logged", "10"), ("frames_with_image", "7"), ("frames_dropped", "0"),
             ("location_auth", "when_in_use"), ("location_accuracy", "full"),
+            ("cloud_rows", "2"), ("cloud_points", "2"), ("cloud_frames_dropped", "0"),
         ] + RecorderConstants().metaRows
     }
 
@@ -166,6 +184,24 @@ enum ContractFixture {
         ]
     }
 
+    /// Two `cloud` rows (schema v2): a full copy after frame 5, then changes after frame 9 that remove one id and set
+    /// one kept id plus an id above 2^53 with a sample count above 255.
+    static var clouds: [CloudRecord] {
+        let a = UInt64(2) << 40
+        let b = UInt64(2) << 40 | 1
+        let big: UInt64 = 18_000_000_000_000_000_000
+        return [
+            CloudRecord(
+                frameIndex: 5, full: true,
+                set: CloudState(ids: [a, b], points: [SIMD3(2, 1.25, -4), SIMD3(2.5, 1.125, -4.125)], samples: [5, 6])
+            ),
+            CloudRecord(
+                frameIndex: 9, full: false, removed: [a],
+                set: CloudState(ids: [b, big], points: [SIMD3(2.5, 1.0625, -4.25), SIMD3(9, 1.25, -5.75)], samples: [7, 300])
+            ),
+        ]
+    }
+
     /// Writes `tiny.planelab/` (sealed `session.sqlite` + `video.mov`) and `expected.json`.
     static func write(bundle: URL, expected: URL) async throws {
         let manager = FileManager.default
@@ -179,6 +215,7 @@ enum ContractFixture {
             for l in locations { try db.insert(l) }
             for h in headings { try db.insert(h) }
             for e in events { try db.insert(e) }
+            for c in clouds { try db.insert(c) }
         }
         try db.seal()
 
@@ -209,6 +246,8 @@ struct ExpectedSession: Codable, Equatable {
     var location: [LocationRow]
     var heading: [HeadingRow]
     var event: [EventRow]
+    /// Absent from version 1 files, which have no `cloud` table.
+    var cloud: [CloudRow]?
 
     struct FrameRow: Codable, Equatable {
         var idx: Int
@@ -262,6 +301,15 @@ struct ExpectedSession: Codable, Equatable {
         var detail: String
     }
 
+    struct CloudRow: Codable, Equatable {
+        var frame_idx: Int
+        var full: Int
+        var removed_ids: [UInt64]
+        var ids: [UInt64]
+        var points: [[Float]]
+        var samples: [UInt16]
+    }
+
     init(_ db: SessionDatabase) throws {
         meta = try db.meta()
         frame = try db.frames().map { f in
@@ -290,6 +338,12 @@ struct ExpectedSession: Codable, Equatable {
             HeadingRow(frame_idx: h.frameIndex, true_deg: h.trueHeading, magnetic_deg: h.magneticHeading, acc_deg: h.accuracy)
         }
         event = try db.events().map { EventRow(frame_idx: $0.frameIndex, kind: $0.kind, detail: $0.detail) }
+        cloud = db.schemaVersion >= 2 ? try db.clouds().map { c in
+            CloudRow(
+                frame_idx: c.frameIndex, full: c.full ? 1 : 0, removed_ids: c.removed, ids: c.set.ids,
+                points: c.set.points.map(Self.list), samples: c.set.samples
+            )
+        } : nil
     }
 
     private static func list(_ v: SIMD3<Float>) -> [Float] { [v.x, v.y, v.z] }

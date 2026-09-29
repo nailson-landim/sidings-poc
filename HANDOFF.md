@@ -36,6 +36,7 @@ Paste this into a new session:
 | **L12 (2026-09-29): CurvSurf's accumulator on the phone, live and recorded** | The user chose "Live cloud + record it". Phase 2C in SPEC §18: T27 Swift accumulator, T28 live cloud in SidingsAR, T29 record it (schema v2), T30 the phone's cloud in Blender | — |
 | T27 Swift accumulator (PlaneKit `Cloud/`) | Done (2026-09-29): matches the Python golden (`session-format/fixtures/cloud/golden.json`) to 4.8e-7 m; 0.055 ms per frame; PlaneKit built `-O` in Debug (P26) | this commit |
 | T28 Live cloud in SidingsAR | Code done (2026-09-29). **Device check open:** the cloud grows while scanning; the user reports *mem MB* and fps | this commit |
+| T29 Record the cloud: schema v2 | Done (2026-09-29): `cloud` table, v2 fixture (v1 kept and still read on both sides), `info`/`peek` show the phone's cloud | this commit |
 | T12, T13, T17–T26 | Not started. T21's ARKit-planes (P17) and averaged-cloud (P19) layers are already done. Next: T17 RANSAC | — |
 
 The checks were green at `e90e034`:
