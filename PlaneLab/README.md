@@ -2,7 +2,7 @@
 
 Replay SidingsAR recordings on the Mac and fit planes offline: *accumulate → fit → track*, driven from Blender or the command line. The spec, plan and tasks live in [`../SPEC.md`](../SPEC.md); this README covers what exists so far.
 
-**Status (2026-09-28):** the session reader, `planelab info` (T6), `planelab peek`, and the Blender import of the camera path and raw points (T8) work. The pipeline, the synthetic sessions and the Blender extension come next (SPEC §18, T8 onward).
+**Status (2026-09-29):** the session reader, `planelab info` (T6), `planelab peek`, the Blender import (camera, video, raw points, ARKit planes, and the averaged cloud), synthetic sessions (T14), `LabConfig` (T15), and CurvSurf's filter, gate and accumulator (T16) work. Plane fitting comes next (SPEC §18, T17 onward).
 
 ## Setup
 
@@ -73,6 +73,7 @@ events    6
 - **Video:** `video.mov` is the camera's background. The clip starts at `1 + first frame with an image`, because Blender drops a leading gap in the file but keeps later ones, holding the previous image (SPEC §15 R2). Looking through the camera shows the image with the points on top.
 - **ARKit planes:** every plane anchor alive at the current frame, as its boundary polygon in SidingsAR's colors (wall cyan, floor green, ceiling yellow, table/seat orange, door/window purple), 35 % opaque. It comes from the recorded add/update/remove callbacks (`planelab.planes`). Recordings made before T11 (2026-09-28) have no anchors.
 - **Raw points:** the current frame's feature points (yellow). A frame-change handler refills them from arrays cached per recording; nothing else is keyframed.
+- **Averaged cloud:** what CurvSurf's app shows, as it was at the current frame: every feature id with at least 5 samples, at the z-score-filtered mean of its last 100 sightings (T16, default `LabConfig`). Colored by samples in the FIFO: under 10 pale pink, 10–49 magenta, 50+ red. It's computed once per recording and cached as `<bundle>/lab/cloud-<hash>.npz` (`planelab.cloud`, SPEC P19): a snapshot every 6 frames, so the cloud grows in 0.1 s steps at 60 fps. Your 2,669-frame recording builds in 1.8 s (2 MB), and a frame change then takes < 3 ms.
 - **Scene:** the frame range is 1 … frames (Blender frame = `idx + 1`), fps is the rate ARKit actually delivered, and the resolution is the captured image's. Session events become timeline markers named `PL …`.
 
 Importing the same recording again replaces it. The user's 48 s recording (2,863 frames) imports in about 0.05 s, and changing frames refreshes the points in about 0.1 ms, measured headless.
@@ -120,6 +121,7 @@ PlaneLab/
 │   ├── config.py     LabConfig: every lab setting (filter, gate, accumulate, fit, track), TOML in and out
 │   ├── gate.py       stages 2-3: near/far filter, CurvSurf's motion gate (intended/upstream/off), per-point parallax gate
 │   ├── accumulate.py stage 4: CurvSurf's FeatureCompressor on numpy ring buffers; accumulate(replay, config)
+│   ├── cloud.py      the averaged cloud at any frame: change snapshots, cached in <bundle>/lab/cloud-<hash>.npz
 │   ├── writer.py     a minimal schema-v1 writer, used only by synth
 │   ├── cli.py        python -m planelab
 │   └── log.py        silent rotating log file, plus stderr for the CLI
@@ -134,7 +136,7 @@ PlaneLab/
 
 ```bash
 ruff check . && ruff format --check .
-pytest --cov=planelab --cov-fail-under=85     # 64 tests incl. headless-Blender ones, about 99 % coverage
+pytest --cov=planelab --cov-fail-under=85     # 119 tests incl. headless-Blender ones, about 99 % coverage
 ```
 
 The contract test reads `../session-format/fixtures/v1/`, written by the Swift recorder, and compares every table with `expected.json` (SPEC S7). The core also runs under Blender's own interpreter:

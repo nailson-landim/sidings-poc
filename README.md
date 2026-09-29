@@ -88,7 +88,7 @@ python -m planelab peek ~/PlaneLab/sessions/$NAME          # -> ~/PlaneLab/sessi
 python -m planelab blend ~/PlaneLab/sessions/$NAME         # -> ~/PlaneLab/sessions/$NAME/lab/replay.blend
 ```
 
-Open `replay.blend` in Blender with the **Plane Lab** extension enabled. `PlaneLab/blender/` is added as a local extension repository; see `PlaneLab/README.md`. The file opens looking through the recorded camera, with the video behind it and the raw points on top.
+Open `replay.blend` in Blender with the **Plane Lab** extension enabled. `PlaneLab/blender/` is added as a local extension repository; see `PlaneLab/README.md`. The file opens looking through the recorded camera, with the video behind it, the raw points (yellow) on top, and the averaged cloud CurvSurf's app shows, growing over the timeline (pink → magenta → red as each point collects samples).
 
 `"${APP[@]}"` passes the array as separate arguments in both zsh and bash. Spike outputs live under `Documents/Spikes/` and are pulled the same way.
 

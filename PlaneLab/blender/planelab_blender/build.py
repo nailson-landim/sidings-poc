@@ -16,7 +16,17 @@ from planelab.session import Event
 SESSION_KEY = "planelab_session"
 LAYER_KEY = "planelab_layer"
 RAW_POINTS = "raw_points"
+AVERAGED_CLOUD = "averaged_cloud"
 ARKIT_PLANES = "arkit_planes"
+CLOUD_DISPLAY = "PlaneLab cloud display"
+CLOUD_RADIUS_M = 0.006
+# Averaged points by samples in their FIFO (CurvSurf's cloud), pale to saturated: young, averaging, well averaged.
+# (label, color, upper bound). Clear of the raw points' yellow and of the ARKit plane colors below.
+CLOUD_MATERIALS: list[tuple[str, tuple[float, float, float], float]] = [
+    ("under 10 samples", (1.0, 0.6, 0.8), 10.0),
+    ("10 to 49 samples", (0.9, 0.2, 1.0), 50.0),
+    ("50+ samples", (1.0, 0.1, 0.1), float("inf")),
+]
 PLANE_ALPHA = 0.35
 # SidingsAR's plane colors (PlaneStyle.swift), by material slot. Slots 0-7 follow ARKit's classification codes
 # (slot 0 is an unclassified horizontal plane); slot 8 is an unclassified vertical plane.
@@ -54,6 +64,7 @@ def build_session(scene: bpy.types.Scene, bundle: Path, replay: Replay, events: 
     add_video(camera, bundle, replay)
     add_trail(collection, name, replay)
     add_raw_points(collection, name, bundle)
+    add_averaged_cloud(collection, name, bundle)
     add_arkit_planes(collection, name, bundle)
     add_markers(scene, events)
     scene.camera = camera
@@ -170,6 +181,69 @@ def add_raw_points(collection: bpy.types.Collection, name: str, bundle: Path) ->
     material.diffuse_color = RAW_POINT_COLOR
     show_as_points(points, material, RAW_POINT_RADIUS_M)
     return points
+
+
+def add_averaged_cloud(collection: bpy.types.Collection, name: str, bundle: Path) -> bpy.types.Object:
+    """The averaged cloud as it was at the current frame (what CurvSurf's app shows), colored by samples."""
+    mesh = bpy.data.meshes.new(f"{name} averaged cloud")
+    cloud = bpy.data.objects.new(f"{name} averaged cloud", mesh)
+    cloud[LAYER_KEY] = AVERAGED_CLOUD
+    cloud[SESSION_KEY] = str(bundle)
+    collection.objects.link(cloud)
+    modifier = cloud.modifiers.new("PlaneLab display", "NODES")
+    modifier.node_group = cloud_display_group()
+    return cloud
+
+
+def cloud_display_group() -> bpy.types.NodeTree:
+    """Mesh vertices to points, one point cloud per sample-count band (read from the ``samples`` attribute).
+
+    A point cloud carries a single material (Set Material ignores its selection there), so each band is split off
+    with its own material and the bands leave as separate instances.
+    """
+    group = bpy.data.node_groups.get(CLOUD_DISPLAY)
+    if group is not None:
+        return group
+    group = bpy.data.node_groups.new(CLOUD_DISPLAY, "GeometryNodeTree")
+    group.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    radius = group.interface.new_socket("Radius", in_out="INPUT", socket_type="NodeSocketFloat")
+    radius.default_value = CLOUD_RADIUS_M
+    group.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+
+    inputs = group.nodes.new("NodeGroupInput")
+    to_points = group.nodes.new("GeometryNodeMeshToPoints")
+    group.links.new(inputs.outputs["Geometry"], to_points.inputs["Mesh"])
+    group.links.new(inputs.outputs["Radius"], to_points.inputs["Radius"])
+    samples = group.nodes.new("GeometryNodeInputNamedAttribute")
+    samples.data_type = "FLOAT"
+    samples.inputs["Name"].default_value = "samples"
+    bands = group.nodes.new("GeometryNodeGeometryToInstance")
+
+    rest = to_points.outputs["Points"]
+    for label, rgb, upper in CLOUD_MATERIALS:
+        material_name = f"PlaneLab cloud {label}"
+        material = bpy.data.materials.get(material_name) or bpy.data.materials.new(material_name)
+        material.diffuse_color = (*rgb, 1.0)
+        paint = group.nodes.new("GeometryNodeSetMaterial")
+        paint.inputs["Material"].default_value = material
+        if upper == float("inf"):
+            group.links.new(rest, paint.inputs["Geometry"])
+        else:
+            below = group.nodes.new("FunctionNodeCompare")
+            below.data_type = "FLOAT"
+            below.operation = "LESS_THAN"
+            group.links.new(samples.outputs["Attribute"], below.inputs[0])
+            below.inputs[1].default_value = upper
+            split = group.nodes.new("GeometryNodeSeparateGeometry")
+            split.domain = "POINT"
+            group.links.new(rest, split.inputs["Geometry"])
+            group.links.new(below.outputs["Result"], split.inputs["Selection"])
+            group.links.new(split.outputs["Selection"], paint.inputs["Geometry"])
+            rest = split.outputs["Inverted"]
+        group.links.new(paint.outputs["Geometry"], bands.inputs["Geometry"])
+    outputs = group.nodes.new("NodeGroupOutput")
+    group.links.new(bands.outputs["Instances"], outputs.inputs["Geometry"])
+    return group
 
 
 def add_arkit_planes(collection: bpy.types.Collection, name: str, bundle: Path) -> bpy.types.Object:

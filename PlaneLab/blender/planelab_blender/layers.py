@@ -11,11 +11,12 @@ import numpy as np
 from bpy.app.handlers import persistent
 
 from planelab.axes import points_to_blender
+from planelab.cloud import CloudTimeline, load_or_build
 from planelab.planes import PlaneTimeline, boundary_world
 from planelab.replay import Replay, load_replay
 from planelab.session import SessionError, open_session
 
-from .build import ARKIT_PLANES, LAYER_KEY, RAW_POINTS, SESSION_KEY, plane_material_slot
+from .build import ARKIT_PLANES, AVERAGED_CLOUD, LAYER_KEY, RAW_POINTS, SESSION_KEY, plane_material_slot
 
 log = logging.getLogger(__name__)
 
@@ -24,13 +25,14 @@ log = logging.getLogger(__name__)
 class Loaded:
     replay: Replay
     planes: PlaneTimeline
+    cloud: CloudTimeline
 
 
 _sessions: dict[str, Loaded] = {}
 
 
-def remember(bundle: Path, replay: Replay, planes: PlaneTimeline) -> None:
-    _sessions[str(bundle)] = Loaded(replay, planes)
+def remember(bundle: Path, replay: Replay, planes: PlaneTimeline, cloud: CloudTimeline) -> None:
+    _sessions[str(bundle)] = Loaded(replay, planes, cloud)
 
 
 def loaded(bundle: str) -> Loaded | None:
@@ -38,7 +40,10 @@ def loaded(bundle: str) -> Loaded | None:
     if bundle not in _sessions:
         try:
             with open_session(Path(bundle)) as session:
-                _sessions[bundle] = Loaded(load_replay(session), PlaneTimeline(session.anchors()))
+                replay = load_replay(session)
+                _sessions[bundle] = Loaded(
+                    replay, PlaneTimeline(session.anchors()), load_or_build(session.bundle, replay)
+                )
         except SessionError as error:
             log.warning("layer source unavailable: %s", error)
             return None
@@ -51,6 +56,15 @@ def set_vertices(mesh: bpy.types.Mesh, points: np.ndarray) -> None:
         mesh.vertices.add(len(points))
         mesh.vertices.foreach_set("co", points.astype(np.float32).ravel())
     mesh.update()
+
+
+def set_cloud(mesh: bpy.types.Mesh, points: np.ndarray, samples: np.ndarray) -> None:
+    """Vertices plus a ``samples`` attribute, which the display group reads to pick each point's color."""
+    set_vertices(mesh, points)
+    if len(points):
+        attribute = mesh.attributes.new("samples", "FLOAT", "POINT")
+        attribute.data.foreach_set("value", samples.astype(np.float32))
+        mesh.update()
 
 
 def set_planes(mesh: bpy.types.Mesh, timeline: PlaneTimeline, idx: int) -> None:
@@ -76,13 +90,16 @@ def update_layers(scene: bpy.types.Scene) -> None:
     idx = scene.frame_current - 1
     for obj in scene.objects:
         layer = obj.get(LAYER_KEY)
-        if layer not in (RAW_POINTS, ARKIT_PLANES) or obj.type != "MESH":
+        if layer not in (RAW_POINTS, AVERAGED_CLOUD, ARKIT_PLANES) or obj.type != "MESH":
             continue
         data = loaded(obj[SESSION_KEY])
         if data is None:
             continue
         if layer == RAW_POINTS:
             set_vertices(obj.data, points_to_blender(data.replay.points_at(idx)))
+        elif layer == AVERAGED_CLOUD:
+            points, samples = data.cloud.at(idx)
+            set_cloud(obj.data, points_to_blender(points), samples)
         else:
             set_planes(obj.data, data.planes, idx)
 

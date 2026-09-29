@@ -15,9 +15,10 @@ PLANELAB = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PLANELAB / "blender"))
 
 import planelab_blender  # noqa: E402
-from planelab_blender.build import plane_material_slot  # noqa: E402
+from planelab_blender.build import CLOUD_MATERIALS, plane_material_slot  # noqa: E402
 
 from planelab.axes import lens_from_intrinsics, points_to_blender, pose_to_blender  # noqa: E402
+from planelab.cloud import load_or_build  # noqa: E402
 from planelab.planes import PlaneTimeline, boundary_world  # noqa: E402
 from planelab.replay import load_replay  # noqa: E402
 from planelab.session import open_session  # noqa: E402
@@ -120,6 +121,51 @@ def check_arkit_planes(scene: bpy.types.Scene, name: str, bundle: Path) -> None:
     print(f"PLANES OK ({len(timeline)} anchors)")
 
 
+def band_counts(cloud: bpy.types.Object) -> dict[str, int]:
+    """Points per material in the evaluated display: one point-cloud instance per sample-count band."""
+    counts: dict[str, int] = {}
+    for instance in bpy.context.evaluated_depsgraph_get().object_instances:
+        parent = instance.parent
+        if instance.is_instance and parent is not None and parent.original == cloud:
+            data = instance.object.data
+            if instance.object.type == "POINTCLOUD" and len(data.points):
+                counts[data.materials[0].name] = len(data.points)
+    return counts
+
+
+def expected_bands(samples: np.ndarray) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    lower = 0.0
+    for label, _, upper in CLOUD_MATERIALS:
+        count = int(np.count_nonzero((samples >= lower) & (samples < upper)))
+        if count:
+            counts[f"PlaneLab cloud {label}"] = count
+        lower = upper
+    return counts
+
+
+def check_averaged_cloud(scene: bpy.types.Scene, name: str, bundle: Path) -> None:
+    """The averaged cloud at each frame equals the core's timeline, with a samples attribute for the colors."""
+    with open_session(bundle) as session:
+        replay = load_replay(session)
+    timeline = load_or_build(bundle, replay)
+    cloud = bpy.data.objects[f"{name} averaged cloud"]
+    frames = len(replay)
+    for idx in sorted({0, 5, 11, frames // 2, frames - 1}):
+        if idx >= frames:
+            continue
+        scene.frame_set(idx + 1)
+        points, samples = timeline.at(idx)
+        vertices = np.array([v.co[:] for v in cloud.data.vertices]).reshape(-1, 3)
+        check(len(vertices) == len(points), f"{len(vertices)} cloud points at idx {idx}, not {len(points)}")
+        if len(points):
+            check(np.allclose(vertices, points_to_blender(points), atol=1e-5), f"cloud positions at idx {idx}")
+            values = np.array([d.value for d in cloud.data.attributes["samples"].data])
+            check(np.array_equal(values, samples.astype(np.float32)), f"samples attribute at idx {idx}")
+            check(band_counts(cloud) == expected_bands(samples), f"colour bands at idx {idx}")
+    print(f"CLOUD OK (final {len(timeline.at(frames - 1)[0]) if frames else 0} points)")
+
+
 def main(bundle: Path) -> None:
     planelab_blender.register()
     with open_session(bundle) as session:
@@ -159,6 +205,7 @@ def main(bundle: Path) -> None:
     check(len(trail.data.vertices) == len(replay) and len(trail.data.edges) == len(replay) - 1, "trail")
     check_video(scene, camera, replay, bundle)
     check_arkit_planes(scene, name, bundle)
+    check_averaged_cloud(scene, name, bundle)
     markers = sorted((m.frame, m.name) for m in scene.timeline_markers)
     check(markers == sorted((e.frame_idx + 1, f"PL {e.kind} {e.detail}") for e in events), f"markers {markers}")
 

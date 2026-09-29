@@ -1,6 +1,7 @@
 """The Blender extension, run headless in the real Blender (SPEC.md §11). Skipped when Blender isn't installed."""
 
 import os
+import re
 import subprocess
 import zipfile
 from pathlib import Path
@@ -20,7 +21,8 @@ def blender(*args: str, env: dict[str, str] | None = None) -> subprocess.Complet
     return subprocess.run([str(BLENDER), *args], capture_output=True, text=True, timeout=600, env=env, check=False)
 
 
-def test_import_smoke(tmp_path: Path) -> None:
+def test_import_smoke(bundle_copy: Path, tmp_path: Path) -> None:
+    """On a copy: the import caches the averaged cloud in ``<bundle>/lab/``, which must not land in the fixture."""
     env = {**os.environ, "PLANELAB_LOG_DIR": str(tmp_path)}
     result = blender(
         "--background",
@@ -30,11 +32,12 @@ def test_import_smoke(tmp_path: Path) -> None:
         "--python",
         str(PLANELAB / "tests" / "blender" / "smoke_import.py"),
         "--",
-        str(FIXTURE_BUNDLE),
+        str(bundle_copy),
         env=env,
     )
     assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
     assert "SMOKE OK" in result.stdout
+    assert not (FIXTURE_BUNDLE / "lab").exists()
 
 
 def test_extension_builds_and_installs(tmp_path: Path) -> None:
@@ -88,3 +91,5 @@ def test_import_smoke_on_a_synthetic_session(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
     assert "VIDEO OK (none)" in result.stdout and "SMOKE OK" in result.stdout
+    final = re.search(r"CLOUD OK \(final (\d+) points\)", result.stdout)
+    assert final is not None and int(final.group(1)) > 0, "the synthetic session must build a real cloud"

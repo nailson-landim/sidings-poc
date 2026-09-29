@@ -2,7 +2,7 @@
 
 
 **Day wrap-up: [`28_SEP_26-HANDOFF.md`](28_SEP_26-HANDOFF.md)** has everything built, tested and found on 28 Sep, plus the full TODO.
-*Last updated 2026-09-28 after T7 closed. Read this first when resuming; `SPEC.md` has the full detail.*
+*Last updated 2026-09-29 after the averaged-cloud layer (P19). Read this first when resuming; `SPEC.md` has the full detail.*
 
 ## Resume prompt
 
@@ -28,11 +28,12 @@ Paste this into a new session:
 | T9 Video behind the camera | Done, S11 confirmed by the user | `f788539` |
 | Checkpoint 1 | **Passed** (user, 2026-09-28): S11 holds, points sit on the video. The user linked `PlaneLab/blender/` as a local extension repository | — |
 | T11 ARKit anchors + Mark | Done, device-checked on 2026-09-28 (`20260928-181436`: 2 planes, 373 anchor rows; "flawless"). Mark not yet tapped on a device | `32fb327`, `12a525c` |
-| T10 Stop reasons, events, low disk, startup images | **Code done (2026-09-29). Device check open:** record, tap Reset mid-recording, then `info` shows `stop: reset` and the "no image" breakdown, and Blender shows tracking markers | `f48458f` |
+| T10 Stop reasons, events, low disk, startup images | **Code done (2026-09-29). Device check open:** record, tap Reset mid-recording, then `info` shows `stop: reset` and Blender shows tracking markers. The first T10 recording (`20260929-161400`) lost 3 images at startup, all `no_buffer` (was 5) | `f48458f` |
 | T14 Synthetic sessions | Done (2026-09-29) | this commit |
 | T15 LabConfig and presets | Done (2026-09-29) | this commit |
 | T16 Filter, motion gate, accumulator | Done (2026-09-29). It matches a line-by-line port of CurvSurf's Swift. On real recordings, `upstream` = `off` (every frame) | this commit |
-| T12, T13, T17–T26 | Not started. T21's ARKit-planes layer is already done (P17). Next: T17 RANSAC | — |
+| Averaged cloud in Blender (T21 part, P19) | Done (2026-09-29): `planelab.cloud` plus an *averaged cloud* layer that grows over the timeline, colored by samples (pink, magenta, red), cached in `lab/cloud-<hash>.npz`. **User check open:** rerun `pull.sh 20260929-161400` (or `planelab blend`), F3 › Reload Scripts, scrub | this commit |
+| T12, T13, T17–T26 | Not started. T21's ARKit-planes (P17) and averaged-cloud (P19) layers are already done. Next: T17 RANSAC | — |
 
 The checks were green at `e90e034`:
 - `swift test`: 68 tests in 10 suites.
@@ -71,6 +72,7 @@ Each one is also recorded where it belongs.
 - **Finder's Files tab can't open an app's folders.** Pull files with `devicectl` instead (below).
 - **Blender headless:** renders only follow `frame_set` on the *context* scene.
 - **The first real recording** (`peek`): intrinsics drift with autofocus (fx 1524.0 → 1527.4); a feature id's position jitters about 2.5–3 cm RMS; startup lost images for frames 5–9 plus a 50 ms gap at frame 10. Warming the pool at Record is a T10 follow-up.
+- **Blender point clouds carry one material.** Set Material ignores its selection on a point cloud, so a per-point color needs one point cloud per color (joined as instances), not one cloud with a material index.
 - **Outdoors** (`20260929-075854`): points to 15.9 m but about 30 cm spread past 10 m; ARKit classified every horizontal plane "seat". Recordings made before the T10 install (all four so far) can't check T10.
 - **This Mac's locale uses a decimal comma.** Run `awk` over `ffprobe` output with `LC_ALL=C`.
 

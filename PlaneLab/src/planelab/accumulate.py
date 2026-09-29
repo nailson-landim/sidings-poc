@@ -15,6 +15,7 @@ Storage is preallocated per slot and grows in fixed chunks, so memory stays clos
 """
 
 from collections import deque
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 import numpy as np
@@ -65,6 +66,9 @@ class Accumulator:
         self._mean = np.zeros((0, 3), dtype=np.float64)
         self._spread = np.zeros(0, dtype=np.float64)
         self._has_mean = np.zeros(0, dtype=bool)
+        # Slots whose averaged point changed, and slots emptied by eviction, since the last take_changes().
+        self._changed: set[int] = set()
+        self._removed: set[int] = set()
 
     def __len__(self) -> int:
         """Ids tracked, averaged or not."""
@@ -96,6 +100,8 @@ class Accumulator:
             self._count[slot] = self._head[slot] = self._sightings[slot] = 0
             self._has_mean[slot] = False
             self._free.append(slot)
+            self._changed.discard(slot)
+            self._removed.add(slot)
             evicted.append((oldest, slot))
         if self._free:
             slot = self._free.pop()
@@ -157,11 +163,30 @@ class Accumulator:
         self._mean[slots] = mean
         self._spread[slots] = np.sqrt(np.sum(residual_sq * keep, axis=1) / kept)
         self._has_mean[slots] = True
+        self._changed.update(slots.tolist())
 
-    def cloud(self) -> Cloud:
+    def _live_slots(self) -> npt.NDArray[np.int64]:
         used = np.zeros(self.capacity, dtype=bool)
         used[list(self._slot.values())] = True
-        slots = np.flatnonzero(used & self._has_mean)
+        return np.flatnonzero(used & self._has_mean)
+
+    def state(self) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.float64], npt.NDArray[np.int32]]:
+        """``(slots, points, samples)`` of every averaged point, keyed by storage slot (for change tracking)."""
+        slots = self._live_slots()
+        return slots, self._mean[slots].copy(), self._count[slots].copy()
+
+    def take_changes(
+        self,
+    ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.float64], npt.NDArray[np.int32]]:
+        """``(removed, changed, points, samples)`` since the last call: slots to clear first, then slots to set."""
+        removed = np.array(sorted(self._removed), dtype=np.int64)
+        changed = np.array(sorted(self._changed), dtype=np.int64)
+        self._removed.clear()
+        self._changed.clear()
+        return removed, changed, self._mean[changed].copy(), self._count[changed].copy()
+
+    def cloud(self) -> Cloud:
+        slots = self._live_slots()
         return Cloud(
             ids=self._ids[slots].copy(),
             points=self._mean[slots].copy(),
@@ -174,15 +199,21 @@ class Accumulator:
 def accumulate(replay: Replay, config: LabConfig, until_idx: int | None = None) -> Accumulator:
     """Stages 2 to 4 over a recording (or up to ``until_idx``): filter, gate, accumulate."""
     accumulator = Accumulator(config.accumulate)
+    for idx, _ in run_frames(replay, config, accumulator):
+        if until_idx is not None and idx >= until_idx:
+            break
+    return accumulator
+
+
+def run_frames(replay: Replay, config: LabConfig, accumulator: Accumulator) -> Iterator[tuple[int, Accumulator]]:
+    """Feeds the recording frame by frame, yielding ``(idx, accumulator)`` after each frame (gated out or not)."""
     frame_gate = FrameGate(config.gate)
     parallax = ParallaxGate(config.gate) if config.gate.mode == "parallax" else None
     for row, idx in enumerate(replay.idx.tolist()):
-        if until_idx is not None and idx > until_idx:
-            break
-        if config.filter.normal_tracking_only and replay.tracking[row] != TRACKING_NORMAL:
-            continue
         camera = replay.cameras[row]
-        if not frame_gate.accept(camera):
+        skip = config.filter.normal_tracking_only and replay.tracking[row] != TRACKING_NORMAL
+        if skip or not frame_gate.accept(camera):
+            yield idx, accumulator
             continue
         start, end = replay.offsets[row], replay.offsets[row + 1]
         points, ids = replay.points[start:end], replay.point_ids[start:end]
@@ -194,4 +225,4 @@ def accumulate(replay: Replay, config: LabConfig, until_idx: int | None = None) 
         evicted = accumulator.add(ids, points)
         if parallax is not None and evicted:
             parallax.forget(evicted)
-    return accumulator
+        yield idx, accumulator

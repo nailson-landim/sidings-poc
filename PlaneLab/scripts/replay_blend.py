@@ -4,7 +4,8 @@ Run headless:
     Blender --background --factory-startup --python scripts/replay_blend.py -- <bundle> [out.blend]
 
 The default output is ``<bundle>/lab/replay.blend``. The camera path and the video are stored in the file. The
-raw-points layer is refilled on every frame by the Plane Lab extension, so enable it in the Blender that opens the file.
+raw points, the averaged cloud and the ARKit planes are refilled on every frame by the Plane Lab extension, so enable it
+in the Blender that opens the file. The averaged cloud is cached in ``<bundle>/lab/cloud-<hash>.npz``.
 """
 
 import sys
@@ -31,6 +32,7 @@ def main(argv: list[str]) -> None:
                 space.region_3d.view_perspective = "CAMERA"
                 space.overlay.show_overlays = True
     out.parent.mkdir(parents=True, exist_ok=True)
+    bpy.context.preferences.filepaths.save_version = 0  # the file is rebuilt on demand: no replay.blend1 backups
     bpy.ops.wm.save_as_mainfile(filepath=str(out))
     planelab_blender.unregister()
     print(f"saved {out}")
