@@ -1040,7 +1040,10 @@ The `cloud` table (P23): `frame_idx` INTEGER PK, `full` INTEGER, `removed_ids` B
 
 The averaged-cloud layer shows the recorded cloud when the session has one, otherwise the Mac's recompute (P19). `planelab info` compares the two (the recompute uses the recording's `const.cloud*` settings): same ids, same sample counts, the largest position difference.
 
-- [ ] Headless: on the v2 fixture and a synthetic v2 session, the layer shows the recorded rows.
+- [x] Headless: on the v2 fixture and a synthetic v2 session, the layer shows the recorded rows.
+- **Code (2026-09-29):** `planelab.cloud.session_cloud` picks the phone's rows when there are any, else the Mac's recompute with `config_from_meta` (the recording's `const.cloud*` settings); the import reports which (`… averaged points at the end (phone cloud)`). `compare_recorded` replays the recording through the Mac's accumulator and compares every row: ids, sample counts, largest position difference. `planelab info --check-cloud` prints it, and `pull.sh` passes the flag.
+  - **End to end without a phone:** `session-format/fixtures/cloud/recorded.planelab` is the golden frames recorded by the real Swift path (`SessionWriter` + `LiveCloud`, with a 4-sample FIFO, 50 ids and a full copy every 2 rows). Python reads its settings back from `meta`, and the recompute matches: 5/5 rows, 18 points, largest difference 0.0003 mm. With the default settings instead, it doesn't, so the check can tell. The Blender smoke test shows the phone source on it. Full rows are now sorted by id so a recording is reproducible.
+  - 108 Swift tests, 132 Python tests (98 %).
 - [ ] **Device + user:** a new recording shows the phone's cloud in Blender, and `info` reports it equal to the recompute.
 - **Depends on:** T28, T29.
 - **Files:** `PlaneLab/blender/planelab_blender/layers.py`, `PlaneLab/src/planelab/{cloud,info}.py`

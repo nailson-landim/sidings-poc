@@ -7,7 +7,7 @@ import bpy
 from bpy.props import StringProperty
 from bpy_extras.io_utils import ImportHelper
 
-from planelab.cloud import load_or_build
+from planelab.cloud import session_cloud
 from planelab.planes import PlaneTimeline
 from planelab.replay import load_replay
 from planelab.session import SessionError, open_session
@@ -42,7 +42,7 @@ class PLANELAB_OT_import_session(bpy.types.Operator, ImportHelper):
                 planes = PlaneTimeline(session.anchors())
                 events = session.events()
                 bundle = session.bundle
-                cloud = load_or_build(bundle, replay)
+                cloud, source = session_cloud(session, replay)
         except SessionError as error:
             self.report({"ERROR"}, str(error))
             return {"CANCELLED"}
@@ -51,7 +51,7 @@ class PLANELAB_OT_import_session(bpy.types.Operator, ImportHelper):
         final = len(cloud.at(int(replay.idx[-1]))[0]) if len(replay) else 0
         message = (
             f"Imported {bundle.name}: {len(replay)} frames at {replay.fps} fps, {len(planes)} ARKit planes, "
-            f"{final} averaged points at the end"
+            f"{final} averaged points at the end ({source} cloud)"
         )
         log.info(message)
         self.report({"INFO"}, message)

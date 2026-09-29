@@ -189,6 +189,39 @@ def config_from_dict(data: dict[str, Any]) -> LabConfig:
     return LabConfig(**sections)  # type: ignore[arg-type]
 
 
+# The phone's averaged-cloud settings (RecorderConstants.cloud*, SPEC.md P21), as written to meta by schema v2.
+META_KEYS: dict[str, tuple[str, str]] = {
+    "const.cloudNearCutM": ("filter", "near_cut_m"),
+    "const.cloudFarCutM": ("filter", "far_cut_m"),
+    "const.cloudNormalTrackingOnly": ("filter", "normal_tracking_only"),
+    "const.cloudGate": ("gate", "mode"),
+    "const.cloudMoveM": ("gate", "move_m"),
+    "const.cloudTurnDeg": ("gate", "turn_deg"),
+    "const.cloudMaxSamples": ("accumulate", "max_samples"),
+    "const.cloudMinSamples": ("accumulate", "min_samples"),
+    "const.cloudZScore": ("accumulate", "zscore"),
+    "const.cloudMaxIds": ("accumulate", "max_ids"),
+}
+
+
+def config_from_meta(meta: dict[str, str]) -> LabConfig:
+    """The settings the phone's cloud ran with (``const.cloud*`` rows), on top of the defaults. A recording without
+    them (schema v1) gives the defaults, which are the same values.
+    """
+    data: dict[str, dict[str, object]] = {}
+    for key, (section, name) in META_KEYS.items():
+        if key not in meta:
+            continue
+        expected = {f.name: f.type for f in fields(SECTIONS[section])}[name]
+        text = meta[key]
+        try:
+            value: object = {bool: lambda t: t == "true", int: int, float: float, str: str}[expected](text)
+        except ValueError as error:
+            raise ConfigError(f"meta {key} = {text!r} is not a {expected.__name__}") from error
+        data.setdefault(section, {})[name] = value
+    return config_from_dict(data)
+
+
 def load_config(path: Path) -> LabConfig:
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))

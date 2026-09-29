@@ -12,9 +12,12 @@ from dataclasses import asdict
 from pathlib import Path
 
 from planelab import __version__
+from planelab.cloud import compare_recorded, describe_comparison
+from planelab.config import config_from_meta
 from planelab.info import describe, summarize
 from planelab.log import setup_logging
 from planelab.peek import table_counts, write_peek
+from planelab.replay import load_replay
 from planelab.session import SessionError, open_session
 from planelab.synth import SCENES, SynthParams, write_synthetic
 
@@ -25,7 +28,19 @@ REPLAY_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "replay_blend.
 def _info(args: argparse.Namespace) -> int:
     with open_session(args.bundle) as session:
         info = summarize(session)
-    print(json.dumps(asdict(info), indent=2) if args.json else describe(info))
+        comparison = None
+        if args.check_cloud:
+            replay = load_replay(session)
+            comparison = compare_recorded(replay, session.cloud_rows(), config_from_meta(session.meta))
+    if args.json:
+        data = asdict(info)
+        if comparison is not None:
+            data["cloud_check"] = asdict(comparison)
+        print(json.dumps(data, indent=2))
+    else:
+        print(describe(info))
+        if comparison is not None:
+            print(describe_comparison(comparison))
     return 0
 
 
@@ -81,6 +96,11 @@ def build_parser() -> argparse.ArgumentParser:
     info = commands.add_parser("info", help="duration, frames, drops, tracking, point range, site")
     info.add_argument("bundle", type=Path, help="a .planelab folder or its zip")
     info.add_argument("--json", action="store_true", help="machine-readable output")
+    info.add_argument(
+        "--check-cloud",
+        action="store_true",
+        help="replay the recording through the Mac's accumulator and compare it with the phone's recorded cloud",
+    )
     info.set_defaults(handler=_info)
 
     peek = commands.add_parser(

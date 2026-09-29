@@ -275,7 +275,7 @@ ARKit_WallDetection/
 
 ## Testing
 
-`cd PlaneKit && swift test` runs 106 Swift Testing cases in 17 suites:
+`cd PlaneKit && swift test` runs 108 Swift Testing cases in 18 suites:
 
 | Suite | Covers |
 |---|---|
@@ -288,6 +288,7 @@ ARKit_WallDetection/
 | Cloud filter and gate | `intended` waits for 3 cm, `upstream` passes small steps and blocks big ones, turning passes, near/far cuts, skipping limited tracking |
 | Live cloud | Same cloud as the pipeline on the golden frames, a display copy every 6 frames, a stalled queue dropping frames in under 50 ms without blocking, clear |
 | Cloud mesh | Sample-count bands, squares growing with distance and facing the camera, striding beyond the point limit |
+| Recorded cloud fixture | The golden frames through `SessionWriter` + `LiveCloud` give the committed `../session-format/fixtures/cloud/recorded.planelab` (Plane Lab checks its recompute equals it) |
 | Averaged cloud golden | The Swift pipeline replays `../session-format/fixtures/cloud/golden.json` (written by Plane Lab's accumulator) under five settings: same ids and sample counts, positions within 2e-6 m. Regenerate on the Python side: `python scripts/cloud_golden.py` |
 | Recording policy | `StopReason` values match the spec, the low-disk rule, tracking events at the start and on change only, image skips counted per frame and reported once per burst |
 | BLOB packing | Column-major little-endian matrices (64 and 36 bytes), 12-byte points, uint64 ids, empty arrays, wrong sizes rejected |

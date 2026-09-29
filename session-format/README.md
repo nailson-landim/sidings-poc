@@ -9,6 +9,7 @@ The on-disk contract between the SidingsAR recorder (Swift) and Plane Lab (Pytho
 | `fixtures/v2/tiny.planelab/` | A 10-frame session written by the real Swift writer: a sealed `session.sqlite` and a 256 × 192 HEVC `video.mov`. |
 | `fixtures/v2/expected.json` | What the fixture must decode to, table by table. |
 | `fixtures/v1/` | The version 1 fixture and its `expected.json`, kept to prove old recordings stay readable. |
+| `fixtures/cloud/recorded.planelab/` | The golden frames recorded by the real Swift path (`SessionWriter` + `LiveCloud`, SPEC T30), with its `cloud` rows and `const.cloud*` meta. Plane Lab's recompute must equal it (`planelab info --check-cloud`). Regenerate with `PLANELAB_WRITE_FIXTURES=1 swift test --filter writeRecordedCloudFixture`; a Swift test keeps it current. |
 | `fixtures/cloud/golden.json` | Frames and the averaged cloud Plane Lab's accumulator builds from them under five settings (SPEC T27). The Swift port (`FeatureAccumulator`) must give the same ids and sample counts, and positions within 2e-6 m. Written by `PlaneLab/scripts/cloud_golden.py`; a Python test keeps it current. |
 
 ## The fixture

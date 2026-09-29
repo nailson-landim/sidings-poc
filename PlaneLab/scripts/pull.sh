@@ -70,11 +70,11 @@ pull_one() {
     mv "$partial" "$target"
 }
 
-# info on screen; peek.sqlite and replay.blend next to the recording.
+# info on screen (with the phone-vs-Mac cloud check, SPEC T30); peek.sqlite and replay.blend next to the recording.
 process() {
     local target="$SESSIONS/$1"
     echo
-    "$PYTHON" -m planelab info "$target"
+    "$PYTHON" -m planelab info --check-cloud "$target"
     "$PYTHON" -m planelab peek "$target" >/dev/null
     echo "peek      $target/lab/peek.sqlite"
     "$PYTHON" -m planelab blend "$target" >/dev/null

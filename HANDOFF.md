@@ -37,6 +37,7 @@ Paste this into a new session:
 | T27 Swift accumulator (PlaneKit `Cloud/`) | Done (2026-09-29): matches the Python golden (`session-format/fixtures/cloud/golden.json`) to 4.8e-7 m; 0.055 ms per frame; PlaneKit built `-O` in Debug (P26) | this commit |
 | T28 Live cloud in SidingsAR | Code done (2026-09-29). **Device check open:** the cloud grows while scanning; the user reports *mem MB* and fps | this commit |
 | T29 Record the cloud: schema v2 | Done (2026-09-29): `cloud` table, v2 fixture (v1 kept and still read on both sides), `info`/`peek` show the phone's cloud | this commit |
+| T30 The phone's cloud in Blender + equality check | Code done (2026-09-29): Blender shows the recorded cloud, `info --check-cloud` (run by `pull.sh`) compares it with the Mac's recompute; equal on a Swift-recorded fixture. **Device check open** with T28: record on the phone, pull, the check says equal | this commit |
 | T12, T13, T17–T26 | Not started. T21's ARKit-planes (P17) and averaged-cloud (P19) layers are already done. Next: T17 RANSAC | — |
 
 The checks were green at `e90e034`:

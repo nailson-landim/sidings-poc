@@ -18,7 +18,7 @@ import planelab_blender  # noqa: E402
 from planelab_blender.build import CLOUD_MATERIALS, CLOUD_SIZE, plane_material_slot  # noqa: E402
 
 from planelab.axes import lens_from_intrinsics, points_to_blender, pose_to_blender  # noqa: E402
-from planelab.cloud import load_or_build  # noqa: E402
+from planelab.cloud import session_cloud  # noqa: E402
 from planelab.planes import PlaneTimeline, boundary_world  # noqa: E402
 from planelab.replay import load_replay  # noqa: E402
 from planelab.session import open_session  # noqa: E402
@@ -155,8 +155,8 @@ def check_refill_on_open(name: str, bundle: Path, out: Path) -> None:
     bpy.ops.wm.save_as_mainfile(filepath=str(out))
     bpy.ops.wm.open_mainfile(filepath=str(out))
     with open_session(bundle) as session:
-        replay = load_replay(session)
-    expected = len(load_or_build(bundle, replay).at(bpy.context.scene.frame_current - 1)[0])
+        timeline, _ = session_cloud(session, load_replay(session))
+    expected = len(timeline.at(bpy.context.scene.frame_current - 1)[0])
     shown = len(bpy.data.objects[f"{name} averaged cloud"].data.vertices)
     check(shown == expected, f"{shown} cloud points after opening, not {expected}")
     print(f"REOPEN OK ({shown} points)")
@@ -174,10 +174,12 @@ def expected_bands(samples: np.ndarray) -> dict[str, int]:
 
 
 def check_averaged_cloud(scene: bpy.types.Scene, name: str, bundle: Path) -> None:
-    """The averaged cloud at each frame equals the core's timeline, with a samples attribute for the colors."""
+    """The averaged cloud at each frame equals the core's timeline (the phone's rows when recorded, else the Mac's
+    recompute), with a samples attribute for the colors.
+    """
     with open_session(bundle) as session:
         replay = load_replay(session)
-    timeline = load_or_build(bundle, replay)
+        timeline, source = session_cloud(session, replay)
     cloud = bpy.data.objects[f"{name} averaged cloud"]
     frames = len(replay)
     for idx in sorted({0, 5, 11, frames // 2, frames - 1}):
@@ -193,7 +195,7 @@ def check_averaged_cloud(scene: bpy.types.Scene, name: str, bundle: Path) -> Non
             check(np.array_equal(values, samples.astype(np.float32)), f"samples attribute at idx {idx}")
             check(band_counts(cloud) == expected_bands(samples), f"colour bands at idx {idx}")
             check_screen_size(cloud, scene.camera)
-    print(f"CLOUD OK (final {len(timeline.at(frames - 1)[0]) if frames else 0} points)")
+    print(f"CLOUD OK ({source}, final {len(timeline.at(frames - 1)[0]) if frames else 0} points)")
 
 
 def main(bundle: Path) -> None:

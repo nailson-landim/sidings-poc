@@ -11,7 +11,7 @@ import numpy as np
 from bpy.app.handlers import persistent
 
 from planelab.axes import points_to_blender
-from planelab.cloud import CloudTimeline, load_or_build
+from planelab.cloud import CloudTimeline, session_cloud
 from planelab.planes import PlaneTimeline, boundary_world
 from planelab.replay import Replay, load_replay
 from planelab.session import SessionError, open_session
@@ -41,9 +41,8 @@ def loaded(bundle: str) -> Loaded | None:
         try:
             with open_session(Path(bundle)) as session:
                 replay = load_replay(session)
-                _sessions[bundle] = Loaded(
-                    replay, PlaneTimeline(session.anchors()), load_or_build(session.bundle, replay)
-                )
+                cloud, _ = session_cloud(session, replay)
+                _sessions[bundle] = Loaded(replay, PlaneTimeline(session.anchors()), cloud)
         except SessionError as error:
             log.warning("layer source unavailable: %s", error)
             return None

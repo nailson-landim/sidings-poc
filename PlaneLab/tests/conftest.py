@@ -13,6 +13,8 @@ FIXTURE_BUNDLE = FIXTURES / "tiny.planelab"
 EXPECTED_FILE = FIXTURES / "expected.json"
 SCHEMA_FILE = REPO_ROOT / "session-format" / "schema_v2.sql"
 V1_FIXTURES = REPO_ROOT / "session-format" / "fixtures" / "v1"
+RECORDED_BUNDLE = REPO_ROOT / "session-format" / "fixtures" / "cloud" / "recorded.planelab"
+"""The golden frames recorded by the Swift recorder (SessionWriter + LiveCloud), with its cloud rows (SPEC T30)."""
 """The version 1 fixture, kept to prove recordings made before L12 stay readable."""
 
 

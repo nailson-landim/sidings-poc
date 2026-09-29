@@ -2,12 +2,13 @@
 
 import os
 import re
+import shutil
 import subprocess
 import zipfile
 from pathlib import Path
 
 import pytest
-from conftest import FIXTURE_BUNDLE
+from conftest import FIXTURE_BUNDLE, RECORDED_BUNDLE
 
 from planelab.synth import SynthParams, write_synthetic
 
@@ -91,5 +92,26 @@ def test_import_smoke_on_a_synthetic_session(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
     assert "VIDEO OK (none)" in result.stdout and "SMOKE OK" in result.stdout
-    final = re.search(r"CLOUD OK \(final (\d+) points\)", result.stdout)
+    final = re.search(r"CLOUD OK \(mac, final (\d+) points\)", result.stdout)
     assert final is not None and int(final.group(1)) > 0, "the synthetic session must build a real cloud"
+
+
+def test_import_smoke_shows_the_phones_recorded_cloud(tmp_path: Path) -> None:
+    """A recording with cloud rows (written by the Swift recorder, SPEC T30) shows the phone's cloud."""
+    bundle = tmp_path / "recorded.planelab"
+    shutil.copytree(RECORDED_BUNDLE, bundle)
+    env = {**os.environ, "PLANELAB_LOG_DIR": str(tmp_path)}
+    result = blender(
+        "--background",
+        "--factory-startup",
+        "--python-exit-code",
+        "1",
+        "--python",
+        str(PLANELAB / "tests" / "blender" / "smoke_import.py"),
+        "--",
+        str(bundle),
+        env=env,
+    )
+    assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
+    assert "CLOUD OK (phone, final 18 points)" in result.stdout and "SMOKE OK" in result.stdout
+    assert not (bundle / "lab").exists() or not list((bundle / "lab").glob("cloud-*.npz"))

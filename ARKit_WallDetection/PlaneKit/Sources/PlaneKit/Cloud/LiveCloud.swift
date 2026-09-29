@@ -147,7 +147,7 @@ public final class LiveCloud: @unchecked Sendable {
         let row: CloudRecord
         if recording.rows % recording.fullEvery == 0 {
             _ = accumulator.takeChanges()
-            row = CloudRecord(frameIndex: index, full: true, set: accumulator.state())
+            row = CloudRecord(frameIndex: index, full: true, set: accumulator.state(sorted: true))
         } else {
             let changes = accumulator.takeChanges()
             row = CloudRecord(frameIndex: index, full: false, removed: changes.removed, set: changes.set)

@@ -18,9 +18,9 @@ import numpy as np
 import numpy.typing as npt
 
 from planelab.accumulate import Accumulator, run_frames
-from planelab.config import LabConfig, config_rows
+from planelab.config import LabConfig, config_from_meta, config_rows
 from planelab.replay import Replay
-from planelab.session import CloudRow
+from planelab.session import CloudRow, Session
 
 log = logging.getLogger(__name__)
 
@@ -224,3 +224,70 @@ def load_or_build(bundle: Path, replay: Replay, config: LabConfig | None = None)
     except OSError as error:
         log.warning("cloud cache not written: %s", error)
     return timeline
+
+
+PHONE = "phone"
+MAC = "mac"
+
+
+def session_cloud(session: Session, replay: Replay) -> tuple[CloudTimeline, str]:
+    """What Blender shows (SPEC.md T30): the phone's recorded cloud when the session has one, otherwise the Mac's
+    recompute with the recording's own settings. Returns the timeline and ``"phone"`` or ``"mac"``.
+    """
+    rows = session.cloud_rows()
+    if rows:
+        return recorded_timeline(rows), PHONE
+    return load_or_build(session.bundle, replay, config_from_meta(session.meta)), MAC
+
+
+@dataclass(slots=True, frozen=True)
+class CloudComparison:
+    """The phone's recorded cloud against the Mac's recompute of the same frames (SPEC.md T30)."""
+
+    rows: int
+    matching_rows: int
+    """Rows whose ids and sample counts equal the recompute's after the same frame."""
+    first_mismatch_frame: int | None
+    max_position_diff_m: float
+    """Largest position difference over the matching rows (float32 rounding is about 1e-6 m at 10 m)."""
+    phone_points: int
+    mac_points: int
+    """Averaged points after the last row, on each side."""
+
+    @property
+    def equal(self) -> bool:
+        return self.rows == self.matching_rows
+
+
+def compare_recorded(replay: Replay, rows: list[CloudRow], config: LabConfig) -> CloudComparison:
+    """Replays the recording through the Mac's accumulator and compares it with every recorded row."""
+    timeline = recorded_timeline(rows)
+    wanted = {row.frame_idx for row in rows}
+    matching, first, worst = 0, None, 0.0
+    phone_points = mac_points = 0
+    for idx, accumulator in run_frames(replay, config, Accumulator(config.accumulate)):
+        if idx not in wanted:
+            continue
+        cloud = accumulator.cloud()
+        order = np.argsort(cloud.ids)
+        ids, points, samples = timeline.ids_at(idx)
+        phone_points, mac_points = len(ids), len(cloud)
+        if np.array_equal(ids, cloud.ids[order]) and np.array_equal(samples, cloud.samples[order]):
+            matching += 1
+            if len(ids):
+                diff = np.abs(points.astype(np.float64) - cloud.points[order]).max()
+                worst = max(worst, float(diff))
+        elif first is None:
+            first = idx
+    return CloudComparison(len(rows), matching, first, worst, phone_points, mac_points)
+
+
+def describe_comparison(result: CloudComparison) -> str:
+    if result.rows == 0:
+        return "check     no phone cloud to compare"
+    verdict = "equal" if result.equal else f"DIFFERENT from frame {result.first_mismatch_frame}"
+    return (
+        f"check     phone vs Mac recompute: {verdict} ({result.matching_rows}/{result.rows} rows match, "
+        f"largest position difference {result.max_position_diff_m * 1000:.4f} mm; "
+        f"{result.phone_points} vs {result.mac_points} points at the end)"
+    )

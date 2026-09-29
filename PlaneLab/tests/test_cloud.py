@@ -4,11 +4,20 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from conftest import FIXTURE_BUNDLE
+from conftest import FIXTURE_BUNDLE, RECORDED_BUNDLE
 
 from planelab.accumulate import accumulate
-from planelab.cloud import CloudTimeline, build_cloud_timeline, cache_path, load_or_build, recorded_timeline
-from planelab.config import AccumulateConfig, FitConfig, GateConfig, LabConfig
+from planelab.cloud import (
+    CloudTimeline,
+    build_cloud_timeline,
+    cache_path,
+    compare_recorded,
+    describe_comparison,
+    load_or_build,
+    recorded_timeline,
+    session_cloud,
+)
+from planelab.config import AccumulateConfig, FitConfig, GateConfig, LabConfig, config_from_meta
 from planelab.replay import Replay, load_replay
 from planelab.session import CloudRow, open_session
 from planelab.synth import SynthParams, write_synthetic
@@ -145,3 +154,36 @@ def test_a_mac_timeline_has_no_ids(room: tuple[Path, Replay]) -> None:
     assert timeline.slot_ids is None
     with pytest.raises(ValueError, match="no feature ids"):
         timeline.ids_at(59)
+
+
+def test_the_phones_recorded_cloud_equals_the_mac_recompute() -> None:
+    with open_session(RECORDED_BUNDLE) as session:
+        replay = load_replay(session)
+        rows = session.cloud_rows()
+        config = config_from_meta(session.meta)
+        timeline, source = session_cloud(session, replay)
+    assert source == "phone" and len(timeline) == len(rows) == 5
+    assert config.accumulate == AccumulateConfig(max_samples=4, min_samples=3, zscore=1.2, max_ids=50)
+    result = compare_recorded(replay, rows, config)
+    assert result.equal and result.first_mismatch_frame is None
+    assert result.max_position_diff_m < 2e-6
+    assert result.phone_points == result.mac_points == 18
+    assert "equal (5/5 rows match" in describe_comparison(result)
+    # With the default settings instead of the phone's, the recompute is a different cloud.
+    assert not compare_recorded(replay, rows, LabConfig()).equal
+
+
+def test_a_mismatch_and_nothing_to_compare_are_reported() -> None:
+    with open_session(FIXTURE_BUNDLE) as session:
+        replay = load_replay(session)
+        result = compare_recorded(replay, session.cloud_rows(), config_from_meta(session.meta))
+    assert not result.equal and result.first_mismatch_frame == 5
+    assert "DIFFERENT from frame 5" in describe_comparison(result)
+    assert describe_comparison(compare_recorded(replay, [], LabConfig())) == "check     no phone cloud to compare"
+
+
+def test_without_rows_blender_gets_the_mac_recompute(room: tuple[Path, Replay]) -> None:
+    bundle, replay = room
+    with open_session(bundle) as session:
+        timeline, source = session_cloud(session, replay)
+    assert source == "mac" and timeline.slot_ids is None

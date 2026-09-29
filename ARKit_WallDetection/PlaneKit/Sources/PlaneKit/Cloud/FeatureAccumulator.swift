@@ -113,13 +113,16 @@ public final class FeatureAccumulator {
         }
     }
 
-    /// The whole cloud now.
-    public func state() -> CloudState {
+    /// The whole cloud now. `sorted` orders it by id (recorded rows, so files are reproducible); otherwise the order
+    /// is arbitrary, which is enough for the display.
+    public func state(sorted: Bool = false) -> CloudState {
+        var live = slotOf.filter { hasMean[$0.value] }.map { (id: $0.key, slot: $0.value) }
+        if sorted { live.sort { $0.id < $1.id } }
         var state = CloudState()
-        state.ids.reserveCapacity(averagedCount)
-        state.points.reserveCapacity(averagedCount)
-        state.samples.reserveCapacity(averagedCount)
-        for (id, slot) in slotOf where hasMean[slot] {
+        state.ids.reserveCapacity(live.count)
+        state.points.reserveCapacity(live.count)
+        state.samples.reserveCapacity(live.count)
+        for (id, slot) in live {
             state.ids.append(id)
             state.points.append(means[slot])
             state.samples.append(UInt16(counts[slot]))
