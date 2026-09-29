@@ -275,6 +275,12 @@ The pipeline runs over the whole session in order. It's deterministic for a give
 
 With a gate, 100 samples means 100 viewpoints. But 3 cm ignores range: it gives 1.7° of parallax on a point 1 m away and only 0.17° at 10 m. For facades at 8–15 m it's too small to matter, not too large. The `parallax` mode gates on that angle per point instead. Every frame is also a real candidate: the upstream gate is inverted, so at walking speed (about 1.7 cm per frame) it accepts almost every frame, and `BUILDING_SAMPLE.png` was made that way. The lab can run all four modes on the same session, so which one to use is part of E3.
 
+**Measured on the user's three recordings (T16, 2026-09-29):**
+- **`upstream` gives exactly the same cloud as `off`** in every recording: a hand-held phone at 60 Hz never moves 3 cm between frames, so CurvSurf's gate as coded passes every frame.
+- **`intended` (3 cm or 3°) averages 10–23 % fewer points,** with about 10–15 samples each instead of 60.
+- **`parallax` (1°) averages the fewest.**
+- **Spread** (the RMS of kept samples around each average) stays about 1 cm in every mode. The recording from 48 s indoors: `off` 12,102 averaged points, `intended` 10,852, `parallax` 10,320.
+
 ### 5.2 Plane tracker (stage 6)
 
 - **Match:** each new fit is matched to an existing plane by normal angle, plane distance and overlap, the same terms PlaneKit uses for NMS.
@@ -1000,9 +1006,24 @@ Frozen dataclasses for every §5 setting, TOML load and save with validation, `c
 
 The near cut, the four gate modes (`off` by default, then `intended`, `upstream` and `parallax`), and the CurvSurf accumulator: a FIFO per id, the z-score filter, `min_samples`, `max_ids` eviction, and each point's sample count and spread. It all runs on preallocated ring buffers (§17.5).
 
-- [ ] Hand-built cases match CurvSurf's behavior, including eviction.
-- [ ] On crafted camera paths, each gate accepts exactly the expected frames or samples, `upstream` included.
-- [ ] 100 000 ids at 100 samples each stay within the memory estimate (test).
+- [x] Hand-built cases match CurvSurf's behavior, including eviction.
+- [x] On crafted camera paths, each gate accepts exactly the expected frames or samples, `upstream` included.
+- [x] 100 000 ids at 100 samples each stay within the memory estimate (test).
+- **Result (2026-09-29):** done.
+  - **`planelab.gate`:**
+    - `keep_points`: CurvSurf's near cut drops squared distance ≤ 0.25², plus an optional far cut.
+    - `FrameGate`: CurvSurf's `CameraMotionDetector` with position and direction starting at zero. `intended` passes on distance² ≥ move², `upstream` on distance² < move² as coded, either way or a turn past `turn_deg`.
+    - `ParallaxGate`: per feature, forgetting the ids the accumulator evicts.
+  - **`planelab.accumulate`:**
+    - `Accumulator`: CurvSurf's `FeatureCompressor` on ring buffers that grow in 16 384-slot chunks, with the z-score filter in float64. Evicting an id earlier in the same frame drops that frame's write, as the sequential Swift loop does. A degenerate z-score (everything rejected) keeps all samples instead of producing NaN.
+    - `accumulate(replay, config)`: stages 2–4.
+  - **Tests** (19 new, 112 Python tests, 98.8 %):
+    - A **line-by-line Python port of the Swift `FeatureCompressor`** matched on a random stream with evictions and outliers.
+    - Hand-built cases: min samples, z-score, FIFO, eviction by first sighting, eviction inside one frame.
+    - 100 000 ids × 100 samples under `(ids + chunk) × per-slot bytes` (< 150 MB).
+    - Averaging a synthetic facade gets the median error below a third of one raw sighting's.
+    - Crafted camera paths for every gate mode; parallax is range-aware (every 5 cm step at 1 m, every 4th at 10 m).
+  - **Real recordings (all four gate modes):** see *Why gate at all* in §5.1. Stages 2–4 took 3.4 s for 2,863 frames with the gate off.
 - **Verify:** `pytest --cov`; `ruff`
 - **Depends on:** T14, T15.
 - **Files:** `PlaneLab/src/planelab/{gate,accumulate}.py`, `PlaneLab/tests/{test_gate,test_accumulate}.py`

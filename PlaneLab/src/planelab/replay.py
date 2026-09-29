@@ -14,6 +14,7 @@ from planelab.session import Session
 Float32Array = npt.NDArray[np.float32]
 Float64Array = npt.NDArray[np.float64]
 Int64Array = npt.NDArray[np.int64]
+UInt64Array = npt.NDArray[np.uint64]
 
 
 @dataclass(slots=True, frozen=True)
@@ -23,6 +24,8 @@ class Replay:
     t: Float64Array
     """(N,) ARFrame timestamps."""
     has_image: npt.NDArray[np.bool_]
+    tracking: Int64Array
+    """(N,) ARKit tracking state per frame (2 = normal)."""
     cameras: Float64Array
     """(N, 4, 4) world <- camera, ARKit axes."""
     intrinsics: Float64Array
@@ -31,6 +34,8 @@ class Replay:
     """(N + 1,) point ranges per frame."""
     points: Float32Array
     """(M, 3) raw feature points of every frame, ARKit axes."""
+    point_ids: UInt64Array
+    """(M,) their feature ids."""
     width: int
     """Captured image width in pixels (meta ``video_width``)."""
     height: int
@@ -53,32 +58,44 @@ class Replay:
             return np.empty((0, 3), dtype=np.float32)
         return self.points[self.offsets[position] : self.offsets[position + 1]]
 
+    def ids_at(self, idx: int) -> UInt64Array:
+        position = self.row(idx)
+        if position is None:
+            return np.empty(0, dtype=np.uint64)
+        return self.point_ids[self.offsets[position] : self.offsets[position + 1]]
+
 
 def load_replay(session: Session) -> Replay:
     idx: list[int] = []
     t: list[float] = []
     has_image: list[bool] = []
+    tracking: list[int] = []
     cameras: list[np.ndarray] = []
     intrinsics: list[np.ndarray] = []
     counts: list[int] = []
     chunks: list[np.ndarray] = []
+    id_chunks: list[np.ndarray] = []
     for frame in session.frames():
         idx.append(frame.idx)
         t.append(frame.t)
         has_image.append(frame.has_image)
+        tracking.append(frame.tracking)
         cameras.append(frame.camera)
         intrinsics.append(frame.intrinsics)
         counts.append(frame.points.shape[0])
         chunks.append(frame.points)
+        id_chunks.append(frame.point_ids)
     fps = session.delivered_fps()
     return Replay(
         idx=np.array(idx, dtype=np.int64),
         t=np.array(t, dtype=np.float64),
         has_image=np.array(has_image, dtype=bool),
+        tracking=np.array(tracking, dtype=np.int64),
         cameras=np.array(cameras, dtype=np.float64).reshape(-1, 4, 4),
         intrinsics=np.array(intrinsics, dtype=np.float64).reshape(-1, 3, 3),
         offsets=np.concatenate([[0], np.cumsum(counts, dtype=np.int64)]).astype(np.int64),
         points=np.concatenate(chunks).astype(np.float32) if chunks else np.empty((0, 3), dtype=np.float32),
+        point_ids=np.concatenate(id_chunks).astype(np.uint64) if id_chunks else np.empty(0, dtype=np.uint64),
         width=int(session.meta.get("video_width", "1920")),
         height=int(session.meta.get("video_height", "1440")),
         fps=max(1, round(fps)) if fps else 60,

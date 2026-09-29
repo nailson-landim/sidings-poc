@@ -31,7 +31,8 @@ Paste this into a new session:
 | T10 Stop reasons, events, low disk, startup images | **Code done (2026-09-29). Device check open:** record, tap Reset mid-recording, then `info` shows `stop: reset` and the "no image" breakdown, and Blender shows tracking markers | `f48458f` |
 | T14 Synthetic sessions | Done (2026-09-29) | this commit |
 | T15 LabConfig and presets | Done (2026-09-29) | this commit |
-| T12, T13, T16–T26 | Not started. T21's ARKit-planes layer is already done (P17). Next: T16 | — |
+| T16 Filter, motion gate, accumulator | Done (2026-09-29). It matches a line-by-line port of CurvSurf's Swift. On real recordings, `upstream` = `off` (every frame) | this commit |
+| T12, T13, T17–T26 | Not started. T21's ARKit-planes layer is already done (P17). Next: T17 RANSAC | — |
 
 The checks were green at `e90e034`:
 - `swift test`: 68 tests in 10 suites.

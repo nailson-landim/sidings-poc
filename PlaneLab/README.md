@@ -118,6 +118,8 @@ PlaneLab/
 │   ├── planes.py     ARKit's planes over time: live anchors per frame, boundaries in world coordinates
 │   ├── synth.py      synthetic sessions with known planes (facade, edges, room) and synth_truth.json
 │   ├── config.py     LabConfig: every lab setting (filter, gate, accumulate, fit, track), TOML in and out
+│   ├── gate.py       stages 2-3: near/far filter, CurvSurf's motion gate (intended/upstream/off), per-point parallax gate
+│   ├── accumulate.py stage 4: CurvSurf's FeatureCompressor on numpy ring buffers; accumulate(replay, config)
 │   ├── writer.py     a minimal schema-v1 writer, used only by synth
 │   ├── cli.py        python -m planelab
 │   └── log.py        silent rotating log file, plus stderr for the CLI

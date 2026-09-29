@@ -19,12 +19,15 @@ def test_fixture_replay() -> None:
     assert (replay.width, replay.height, replay.fps, replay.first_image) == (256, 192, 32, 1)
     assert replay.has_image.tolist() == [f.has_image for f in frames]
     assert replay.offsets[-1] == replay.points.shape[0] == 36
+    assert replay.tracking.tolist() == [f.tracking for f in frames]
     for frame in frames:
         assert np.array_equal(replay.points_at(frame.idx), frame.points)
+        assert np.array_equal(replay.ids_at(frame.idx), frame.point_ids)
         assert np.array_equal(replay.cameras[frame.idx], frame.camera)
         assert np.array_equal(replay.intrinsics[frame.idx], frame.intrinsics)
     assert replay.points_at(0).shape == (0, 3)
     assert replay.points_at(99).shape == (0, 3)
+    assert replay.ids_at(99).shape == (0,)
     assert replay.row(-1) is None
 
 
