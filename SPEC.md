@@ -56,7 +56,7 @@ One researcher (the user). Capture on an iPhone 13 (no LiDAR) and an iPhone 13 P
 
 | # | Question | Why it matters |
 |---|---|---|
-| E1 | **How far do the feature points reach outdoors?** CurvSurf's README says that around December 2025 the range of `rawFeaturePoints` grew from about 10 m to about 65 m. Apple hasn't documented this. The lab shows point-range percentiles per frame. | If it's true, feature points cover the 8–15 m facade standoff (CONSOLIDATION §4). That changes what non-LiDAR phones can do. |
+| E1 | *(Early data, 2026-09-29: outdoors on the iPhone 13 without LiDAR, sightings reached **15.9 m**. 0.9 % were past 10 m, and features averaged past 10 m spread by about 30 cm. So the range goes past the old ~10 m, but it's noisy there. The controlled test at a known standoff is still T25.)* **How far do the feature points reach outdoors?** CurvSurf's README says that around December 2025 the range of `rawFeaturePoints` grew from about 10 m to about 65 m. Apple hasn't documented this. The lab shows point-range percentiles per frame. | If it's true, feature points cover the 8–15 m facade standoff (CONSOLIDATION §4). That changes what non-LiDAR phones can do. |
 | E2 | **How soon does each wall get a plane**, ARKit vs. ours, in the same session? | This is the recall gap we want to close. |
 | E3 | **Which settings buy recall**, and what do they cost in false or unstable planes? | This produces the config to port to the phone. |
 
@@ -275,11 +275,14 @@ The pipeline runs over the whole session in order. It's deterministic for a give
 
 With a gate, 100 samples means 100 viewpoints. But 3 cm ignores range: it gives 1.7° of parallax on a point 1 m away and only 0.17° at 10 m. For facades at 8–15 m it's too small to matter, not too large. The `parallax` mode gates on that angle per point instead. Every frame is also a real candidate: the upstream gate is inverted, so at walking speed (about 1.7 cm per frame) it accepts almost every frame, and `BUILDING_SAMPLE.png` was made that way. The lab can run all four modes on the same session, so which one to use is part of E3.
 
-**Measured on the user's three recordings (T16, 2026-09-29):**
+**Measured on the user's four recordings (T16, 2026-09-29; three indoors, one outdoors):**
 - **`upstream` gives exactly the same cloud as `off`** in every recording: a hand-held phone at 60 Hz never moves 3 cm between frames, so CurvSurf's gate as coded passes every frame.
 - **`intended` (3 cm or 3°) averages 10–23 % fewer points,** with about 10–15 samples each instead of 60.
 - **`parallax` (1°) averages the fewest.**
-- **Spread** (the RMS of kept samples around each average) stays about 1 cm in every mode. The recording from 48 s indoors: `off` 12,102 averaged points, `intended` 10,852, `parallax` 10,320.
+- **Spread** (the RMS of kept samples around each average) stays about 1 cm in every mode indoors. The recording from 48 s indoors: `off` 12,102 averaged points, `intended` 10,852, `parallax` 10,320.
+- **Outdoors** (`20260929-075854`, 51 s, points out to 15.9 m):
+  - `off` 4,797 averaged points, `intended` 4,392, `parallax` only 2,225, because a 1° parallax is rarely reached at range.
+  - Median spread is about 3.7 cm, since the farther points are noisier.
 
 ### 5.2 Plane tracker (stage 6)
 

@@ -155,6 +155,9 @@ A simple regressor trained on ground-truth houses outputs ±X%. **The validation
 - **What `planelab peek` shows in the first real recording** (48 s indoors):
   - **The intrinsics drift with autofocus:** fx went from 1524.0 to 1527.4 px, so they must be taken per frame, never as a constant.
   - **ARKit's position for a given feature id moves by about 2.5–3 cm RMS** across its sightings (12,177 ids, each seen about 59 times on average). That's the noise the lab's averaging has to remove before fitting planes.
+- **Outdoors, first recording** (Sep 29, 2026, iPhone 13 without LiDAR, `20260929-075854`, 51 s, 60 Hz):
+  - **Range:** `rawFeaturePoints` reached **15.9 m**, past the ~10 m limit CurvSurf described for the old behaviour. Only 0.9 % of sightings were past 10 m (704 past 12 m, in 421 of 3,092 frames), and the 51 features averaged past 10 m spread by **about 30 cm RMS** against about 1 cm up close. Far points exist but are noisy. This is early evidence for E1, not the controlled standoff test.
+  - **Classification:** ARKit labelled **all 6 horizontal planes outdoors "seat"** (6 adds, 2,067 updates, 2 removes). On a non-LiDAR phone outdoors, plane classification isn't something to rely on.
 - **Still open:** 60 Hz over a full 5-minute session, whether recording itself pushes the phone into *serious*, and memory growth (300 → 440 MB in a minute in the spike). These are checked at Plane Lab Checkpoint 2A.
 
 ## 11. Document index

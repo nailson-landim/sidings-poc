@@ -71,6 +71,7 @@ Each one is also recorded where it belongs.
 - **Finder's Files tab can't open an app's folders.** Pull files with `devicectl` instead (below).
 - **Blender headless:** renders only follow `frame_set` on the *context* scene.
 - **The first real recording** (`peek`): intrinsics drift with autofocus (fx 1524.0 → 1527.4); a feature id's position jitters about 2.5–3 cm RMS; startup lost images for frames 5–9 plus a 50 ms gap at frame 10. Warming the pool at Record is a T10 follow-up.
+- **Outdoors** (`20260929-075854`): points to 15.9 m but about 30 cm spread past 10 m; ARKit classified every horizontal plane "seat". Recordings made before the T10 install (all four so far) can't check T10.
 - **This Mac's locale uses a decimal comma.** Run `awk` over `ffprobe` output with `LC_ALL=C`.
 
 ## Working agreements (from the user)
