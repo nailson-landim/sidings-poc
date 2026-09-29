@@ -72,11 +72,11 @@ events    6
 - **Trail:** a static polyline of the whole camera path.
 - **Video:** `video.mov` is the camera's background. The clip starts at `1 + first frame with an image`, because Blender drops a leading gap in the file but keeps later ones, holding the previous image (SPEC §15 R2). Looking through the camera shows the image with the points on top.
 - **ARKit planes:** every plane anchor alive at the current frame, as its boundary polygon in SidingsAR's colors (wall cyan, floor green, ceiling yellow, table/seat orange, door/window purple), 35 % opaque. It comes from the recorded add/update/remove callbacks (`planelab.planes`). Recordings made before T11 (2026-09-28) have no anchors.
-- **Raw points:** the current frame's feature points (yellow). A frame-change handler refills them from arrays cached per recording; nothing else is keyframed.
+- **Raw points:** the current frame's feature points (yellow). A frame-change handler refills them from arrays cached per recording; nothing else is keyframed. Points keep a steady size on screen: radius = *Size* × distance from the recorded camera (the modifier's *Size* input; SPEC P20).
 - **Averaged cloud:** what CurvSurf's app shows, as it was at the current frame: every feature id with at least 5 samples, at the z-score-filtered mean of its last 100 sightings (T16, default `LabConfig`). Colored by samples in the FIFO: under 10 pale pink, 10–49 magenta, 50+ red. It's computed once per recording and cached as `<bundle>/lab/cloud-<hash>.npz` (`planelab.cloud`, SPEC P19): a snapshot every 6 frames, so the cloud grows in 0.1 s steps at 60 fps. Your 2,669-frame recording builds in 1.8 s (2 MB), and a frame change then takes < 3 ms.
 - **Scene:** the frame range is 1 … frames (Blender frame = `idx + 1`), fps is the rate ARKit actually delivered, and the resolution is the captured image's. Session events become timeline markers named `PL …`.
 
-Importing the same recording again replaces it. The user's 48 s recording (2,863 frames) imports in about 0.05 s, and changing frames refreshes the points in about 0.1 ms, measured headless.
+Importing the same recording again replaces it. Opening a saved `.blend` fills the layers at once. **If the layers stay empty or frozen, the extension is off:** Edit › Preferences › Add-ons, search "Plane Lab", tick it. The user's 48 s recording (2,863 frames) imports in about 0.05 s, and changing frames refreshes the points in about 0.1 ms, measured headless.
 
 ```bash
 ./scripts/build_extension.sh                 # -> dist/planelab_blender-<version>.zip, with the core copied in

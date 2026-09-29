@@ -19,7 +19,9 @@ RAW_POINTS = "raw_points"
 AVERAGED_CLOUD = "averaged_cloud"
 ARKIT_PLANES = "arkit_planes"
 CLOUD_DISPLAY = "PlaneLab cloud display"
-CLOUD_RADIUS_M = 0.006
+# Points keep a steady size on screen, like CurvSurf's point sprites: radius = size x distance from the recorded camera.
+# 0.003 is about 4.5 px of radius at the recorded focal length (about 1,500 px). A fixed radius vanished at 10 m.
+CLOUD_SIZE = 0.003
 # Averaged points by samples in their FIFO (CurvSurf's cloud), pale to saturated: young, averaging, well averaged.
 # (label, color, upper bound). Clear of the raw points' yellow and of the ARKit plane colors below.
 CLOUD_MATERIALS: list[tuple[str, tuple[float, float, float], float]] = [
@@ -44,7 +46,7 @@ PLANE_MATERIALS: list[tuple[str, tuple[float, float, float]]] = [
 MARKER_PREFIX = "PL "
 POINT_DISPLAY = "PlaneLab point display"
 RAW_POINT_COLOR = (1.0, 0.85, 0.1, 1.0)
-RAW_POINT_RADIUS_M = 0.01
+RAW_POINT_SIZE = 0.004
 
 
 def collection_name(bundle: Path) -> str:
@@ -63,8 +65,8 @@ def build_session(scene: bpy.types.Scene, bundle: Path, replay: Replay, events: 
     camera = add_camera(collection, name, replay)
     add_video(camera, bundle, replay)
     add_trail(collection, name, replay)
-    add_raw_points(collection, name, bundle)
-    add_averaged_cloud(collection, name, bundle)
+    add_raw_points(collection, name, bundle, camera)
+    add_averaged_cloud(collection, name, bundle, camera)
     add_arkit_planes(collection, name, bundle)
     add_markers(scene, events)
     scene.camera = camera
@@ -170,7 +172,9 @@ def add_trail(collection: bpy.types.Collection, name: str, replay: Replay) -> bp
     return trail
 
 
-def add_raw_points(collection: bpy.types.Collection, name: str, bundle: Path) -> bpy.types.Object:
+def add_raw_points(
+    collection: bpy.types.Collection, name: str, bundle: Path, camera: bpy.types.Object
+) -> bpy.types.Object:
     """An empty mesh that the frame handler fills with the current frame's raw feature points."""
     mesh = bpy.data.meshes.new(f"{name} raw points")
     points = bpy.data.objects.new(f"{name} raw points", mesh)
@@ -179,11 +183,15 @@ def add_raw_points(collection: bpy.types.Collection, name: str, bundle: Path) ->
     collection.objects.link(points)
     material = bpy.data.materials.get("PlaneLab raw points") or bpy.data.materials.new("PlaneLab raw points")
     material.diffuse_color = RAW_POINT_COLOR
-    show_as_points(points, material, RAW_POINT_RADIUS_M)
+    modifier = points.modifiers.new("PlaneLab display", "NODES")
+    modifier.node_group = point_display_group()
+    set_inputs(modifier, Material=material, Eye=camera, Size=RAW_POINT_SIZE)
     return points
 
 
-def add_averaged_cloud(collection: bpy.types.Collection, name: str, bundle: Path) -> bpy.types.Object:
+def add_averaged_cloud(
+    collection: bpy.types.Collection, name: str, bundle: Path, camera: bpy.types.Object
+) -> bpy.types.Object:
     """The averaged cloud as it was at the current frame (what CurvSurf's app shows), colored by samples."""
     mesh = bpy.data.meshes.new(f"{name} averaged cloud")
     cloud = bpy.data.objects.new(f"{name} averaged cloud", mesh)
@@ -192,6 +200,7 @@ def add_averaged_cloud(collection: bpy.types.Collection, name: str, bundle: Path
     collection.objects.link(cloud)
     modifier = cloud.modifiers.new("PlaneLab display", "NODES")
     modifier.node_group = cloud_display_group()
+    set_inputs(modifier, Eye=camera, Size=CLOUD_SIZE)
     return cloud
 
 
@@ -201,19 +210,12 @@ def cloud_display_group() -> bpy.types.NodeTree:
     A point cloud carries a single material (Set Material ignores its selection there), so each band is split off
     with its own material and the bands leave as separate instances.
     """
-    group = bpy.data.node_groups.get(CLOUD_DISPLAY)
+    group = existing_group(CLOUD_DISPLAY)
     if group is not None:
         return group
-    group = bpy.data.node_groups.new(CLOUD_DISPLAY, "GeometryNodeTree")
-    group.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    radius = group.interface.new_socket("Radius", in_out="INPUT", socket_type="NodeSocketFloat")
-    radius.default_value = CLOUD_RADIUS_M
-    group.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-
+    group = new_points_group(CLOUD_DISPLAY, CLOUD_SIZE)
     inputs = group.nodes.new("NodeGroupInput")
-    to_points = group.nodes.new("GeometryNodeMeshToPoints")
-    group.links.new(inputs.outputs["Geometry"], to_points.inputs["Mesh"])
-    group.links.new(inputs.outputs["Radius"], to_points.inputs["Radius"])
+    to_points = screen_sized_points(group, inputs)
     samples = group.nodes.new("GeometryNodeInputNamedAttribute")
     samples.data_type = "FLOAT"
     samples.inputs["Name"].default_value = "samples"
@@ -270,35 +272,70 @@ def plane_material_slot(classification: int | None, alignment: int | None) -> in
     return code if 0 <= code < len(PLANE_MATERIALS) - 1 else 0
 
 
-def show_as_points(obj: bpy.types.Object, material: bpy.types.Material, radius: float) -> None:
-    """Loose vertices are invisible outside Edit Mode, so a geometry-nodes modifier turns them into points."""
-    modifier = obj.modifiers.new("PlaneLab display", "NODES")
-    modifier.node_group = point_display_group()
+def set_inputs(modifier: bpy.types.NodesModifier, **values: object) -> None:
+    """Sets a geometry-nodes modifier's inputs by their names in the group's interface."""
     for item in modifier.node_group.interface.items_tree:
-        if item.item_type == "SOCKET" and item.in_out == "INPUT":
-            if item.name == "Material":
-                modifier[item.identifier] = material
-            elif item.name == "Radius":
-                modifier[item.identifier] = radius
+        if item.item_type == "SOCKET" and item.in_out == "INPUT" and item.name in values:
+            modifier[item.identifier] = values[item.name]
+
+
+def existing_group(name: str) -> bpy.types.NodeTree | None:
+    """The group of that name, unless it predates the screen-sized points (no Eye input): that one is rebuilt."""
+    group = bpy.data.node_groups.get(name)
+    if group is None:
+        return None
+    if any(item.item_type == "SOCKET" and item.name == "Eye" for item in group.interface.items_tree):
+        return group
+    bpy.data.node_groups.remove(group)
+    return None
+
+
+def new_points_group(name: str, size: float, material: bool = False) -> bpy.types.NodeTree:
+    """A geometry-nodes group with inputs Geometry, [Material,] Eye (the recorded camera) and Size."""
+    group = bpy.data.node_groups.new(name, "GeometryNodeTree")
+    group.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    if material:
+        group.interface.new_socket("Material", in_out="INPUT", socket_type="NodeSocketMaterial")
+    group.interface.new_socket("Eye", in_out="INPUT", socket_type="NodeSocketObject")
+    size_socket = group.interface.new_socket("Size", in_out="INPUT", socket_type="NodeSocketFloat")
+    size_socket.default_value = size
+    size_socket.description = "Point radius per metre of distance from the recorded camera"
+    group.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    return group
+
+
+def screen_sized_points(group: bpy.types.NodeTree, inputs: bpy.types.Node) -> bpy.types.Node:
+    """Mesh to Points with radius = Size x distance to Eye, so points look the same size through the camera.
+
+    Loose vertices are invisible outside Edit Mode, hence the conversion to points.
+    """
+    eye = group.nodes.new("GeometryNodeObjectInfo")
+    eye.transform_space = "RELATIVE"
+    group.links.new(inputs.outputs["Eye"], eye.inputs["Object"])
+    position = group.nodes.new("GeometryNodeInputPosition")
+    distance = group.nodes.new("ShaderNodeVectorMath")
+    distance.operation = "DISTANCE"
+    group.links.new(position.outputs["Position"], distance.inputs[0])
+    group.links.new(eye.outputs["Location"], distance.inputs[1])
+    radius = group.nodes.new("ShaderNodeMath")
+    radius.operation = "MULTIPLY"
+    group.links.new(distance.outputs["Value"], radius.inputs[0])
+    group.links.new(inputs.outputs["Size"], radius.inputs[1])
+    to_points = group.nodes.new("GeometryNodeMeshToPoints")
+    group.links.new(inputs.outputs["Geometry"], to_points.inputs["Mesh"])
+    group.links.new(radius.outputs["Value"], to_points.inputs["Radius"])
+    return to_points
 
 
 def point_display_group() -> bpy.types.NodeTree:
-    group = bpy.data.node_groups.get(POINT_DISPLAY)
+    group = existing_group(POINT_DISPLAY)
     if group is not None:
         return group
-    group = bpy.data.node_groups.new(POINT_DISPLAY, "GeometryNodeTree")
-    group.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    group.interface.new_socket("Material", in_out="INPUT", socket_type="NodeSocketMaterial")
-    radius = group.interface.new_socket("Radius", in_out="INPUT", socket_type="NodeSocketFloat")
-    radius.default_value = RAW_POINT_RADIUS_M
-    group.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-
+    group = new_points_group(POINT_DISPLAY, RAW_POINT_SIZE, material=True)
     inputs = group.nodes.new("NodeGroupInput")
-    to_points = group.nodes.new("GeometryNodeMeshToPoints")
+    to_points = screen_sized_points(group, inputs)
     set_material = group.nodes.new("GeometryNodeSetMaterial")
     outputs = group.nodes.new("NodeGroupOutput")
-    group.links.new(inputs.outputs["Geometry"], to_points.inputs["Mesh"])
-    group.links.new(inputs.outputs["Radius"], to_points.inputs["Radius"])
     group.links.new(to_points.outputs["Points"], set_material.inputs["Geometry"])
     group.links.new(inputs.outputs["Material"], set_material.inputs["Material"])
     group.links.new(set_material.outputs["Geometry"], outputs.inputs["Geometry"])

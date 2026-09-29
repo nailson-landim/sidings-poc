@@ -111,7 +111,11 @@ def on_frame_change(scene: bpy.types.Scene, *_: object) -> None:
 
 @persistent
 def on_load(*_: object) -> None:
+    """A newly opened file shows its layers at the current frame right away, not only after the first frame change."""
     _sessions.clear()
+    scene = bpy.context.scene
+    if scene is not None:
+        update_layers(scene)
 
 
 def register() -> None:

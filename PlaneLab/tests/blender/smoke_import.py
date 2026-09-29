@@ -15,7 +15,7 @@ PLANELAB = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PLANELAB / "blender"))
 
 import planelab_blender  # noqa: E402
-from planelab_blender.build import CLOUD_MATERIALS, plane_material_slot  # noqa: E402
+from planelab_blender.build import CLOUD_MATERIALS, CLOUD_SIZE, plane_material_slot  # noqa: E402
 
 from planelab.axes import lens_from_intrinsics, points_to_blender, pose_to_blender  # noqa: E402
 from planelab.cloud import load_or_build  # noqa: E402
@@ -133,6 +133,35 @@ def band_counts(cloud: bpy.types.Object) -> dict[str, int]:
     return counts
 
 
+def check_screen_size(cloud: bpy.types.Object, camera: bpy.types.Object) -> None:
+    """Each displayed point's radius is CLOUD_SIZE times its distance from the recorded camera."""
+    eye = np.array(camera.matrix_world.translation)
+    for instance in bpy.context.evaluated_depsgraph_get().object_instances:
+        parent = instance.parent
+        if instance.is_instance and parent is not None and parent.original == cloud:
+            data = instance.object.data
+            if instance.object.type == "POINTCLOUD" and len(data.points):
+                positions = np.array([p.co[:] for p in data.points])
+                radii = np.array([p.radius for p in data.points])
+                expected = CLOUD_SIZE * np.linalg.norm(positions - eye, axis=1)
+                check(np.allclose(radii, expected, rtol=1e-4, atol=1e-7), "screen-sized radii")
+
+
+def check_refill_on_open(name: str, bundle: Path, out: Path) -> None:
+    """A saved file shows the cloud of its current frame as soon as it opens, before any frame change."""
+    scene = bpy.context.scene
+    scene.frame_set(scene.frame_end)
+    bpy.data.objects[f"{name} averaged cloud"].data.clear_geometry()
+    bpy.ops.wm.save_as_mainfile(filepath=str(out))
+    bpy.ops.wm.open_mainfile(filepath=str(out))
+    with open_session(bundle) as session:
+        replay = load_replay(session)
+    expected = len(load_or_build(bundle, replay).at(bpy.context.scene.frame_current - 1)[0])
+    shown = len(bpy.data.objects[f"{name} averaged cloud"].data.vertices)
+    check(shown == expected, f"{shown} cloud points after opening, not {expected}")
+    print(f"REOPEN OK ({shown} points)")
+
+
 def expected_bands(samples: np.ndarray) -> dict[str, int]:
     counts: dict[str, int] = {}
     lower = 0.0
@@ -163,6 +192,7 @@ def check_averaged_cloud(scene: bpy.types.Scene, name: str, bundle: Path) -> Non
             values = np.array([d.value for d in cloud.data.attributes["samples"].data])
             check(np.array_equal(values, samples.astype(np.float32)), f"samples attribute at idx {idx}")
             check(band_counts(cloud) == expected_bands(samples), f"colour bands at idx {idx}")
+            check_screen_size(cloud, scene.camera)
     print(f"CLOUD OK (final {len(timeline.at(frames - 1)[0]) if frames else 0} points)")
 
 
@@ -220,6 +250,7 @@ def main(bundle: Path) -> None:
     except RuntimeError as error:
         check("neither" in str(error), f"clear error: {error}")
 
+    check_refill_on_open(name, bundle, bundle.parent / f"{bundle.name}.smoke.blend")
     planelab_blender.unregister()
     print("SMOKE OK")
 
