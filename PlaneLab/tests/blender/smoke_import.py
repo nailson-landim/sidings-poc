@@ -70,6 +70,10 @@ def shown_number(scene: bpy.types.Scene, clip: bpy.types.MovieClip, frame: int, 
 def check_video(scene: bpy.types.Scene, camera: bpy.types.Object, replay: object, bundle: Path) -> None:
     """T9: the video is the camera's background, starting at the first image (SPEC.md §15 R2)."""
     backgrounds = list(camera.data.background_images)
+    if not (bundle / "video.mov").is_file():  # synthetic sessions have no video
+        check(not backgrounds, "no background without a video")
+        print("VIDEO OK (none)")
+        return
     check(camera.data.show_background_images and len(backgrounds) == 1, "one background image")
     clip = backgrounds[0].clip
     check(clip is not None and Path(bpy.path.abspath(clip.filepath)) == bundle / "video.mov", "clip is the video")

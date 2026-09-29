@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 from conftest import FIXTURE_BUNDLE
 
+from planelab.synth import SynthParams, write_synthetic
+
 PLANELAB = Path(__file__).resolve().parents[1]
 BLENDER = Path(os.environ.get("BLENDER", "/Applications/Blender.app/Contents/MacOS/Blender"))
 
@@ -66,3 +68,23 @@ def test_extension_builds_and_installs(tmp_path: Path) -> None:
         env=profile,
     )
     assert "INSTALLED OK" in probe.stdout, probe.stdout[-3000:] + probe.stderr[-3000:]
+
+
+def test_import_smoke_on_a_synthetic_session(tmp_path: Path) -> None:
+    """Synthetic sessions (T14) have no video; the import still builds camera, trail and points."""
+    bundle = tmp_path / "edges.planelab"
+    write_synthetic(bundle, SynthParams(scene="edges", seconds=1, fps=10))
+    env = {**os.environ, "PLANELAB_LOG_DIR": str(tmp_path)}
+    result = blender(
+        "--background",
+        "--factory-startup",
+        "--python-exit-code",
+        "1",
+        "--python",
+        str(PLANELAB / "tests" / "blender" / "smoke_import.py"),
+        "--",
+        str(bundle),
+        env=env,
+    )
+    assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-4000:]
+    assert "VIDEO OK (none)" in result.stdout and "SMOKE OK" in result.stdout

@@ -1,6 +1,6 @@
 """``python -m planelab`` (SPEC.md §5.5). Every command also has a Blender operator (L7); both call the same core.
 
-Commands so far: ``info``, ``peek`` and ``blend``; ``run``, ``synth`` and ``export`` arrive with their tasks (SPEC §18).
+Commands so far: ``info``, ``peek``, ``blend`` and ``synth``; ``run`` and ``export`` arrive with T20 (SPEC §18).
 """
 
 import argparse
@@ -16,6 +16,7 @@ from planelab.info import describe, summarize
 from planelab.log import setup_logging
 from planelab.peek import table_counts, write_peek
 from planelab.session import SessionError, open_session
+from planelab.synth import SCENES, SynthParams, write_synthetic
 
 DEFAULT_BLENDER = "/Applications/Blender.app/Contents/MacOS/Blender"
 REPLAY_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "replay_blend.py"
@@ -62,6 +63,16 @@ def _blend(args: argparse.Namespace) -> int:
     return 0
 
 
+def _synth(args: argparse.Namespace) -> int:
+    params = SynthParams(scene=args.scene, seed=args.seed, seconds=args.seconds, fps=args.fps)
+    scene = write_synthetic(args.out.expanduser(), params)
+    names = ", ".join(p.name for p in scene.planes)
+    print(f"wrote {args.out}: {params.scene}, {scene.stats['frames']} frames, planes: {names}")
+    print(f"  {scene.stats['plane_features']} features on planes, {scene.stats['clutter_features']} clutter")
+    print(f"  truth: {args.out / 'synth_truth.json'}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="planelab", description="Plane Lab: replay SidingsAR recordings.")
     parser.add_argument("--version", action="version", version=f"planelab {__version__}")
@@ -87,6 +98,14 @@ def build_parser() -> argparse.ArgumentParser:
     blend.add_argument("--out", type=Path, help="where to write it (default: <bundle>/lab/replay.blend)")
     blend.add_argument("--blender", help=f"the Blender executable (default: $BLENDER or {DEFAULT_BLENDER})")
     blend.set_defaults(handler=_blend)
+
+    synth = commands.add_parser("synth", help="write a synthetic session with known planes (no video)")
+    synth.add_argument("out", type=Path, help="the .planelab folder to create")
+    synth.add_argument("--scene", choices=SCENES, default="facade")
+    synth.add_argument("--seed", type=int, default=7)
+    synth.add_argument("--seconds", type=float, default=10.0)
+    synth.add_argument("--fps", type=int, default=30)
+    synth.set_defaults(handler=_synth)
     return parser
 
 

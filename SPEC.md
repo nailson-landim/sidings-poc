@@ -960,9 +960,18 @@ A sheet lists the recordings (date, duration, size, device, read from `meta`), w
 
 `planelab synth` writes the `facade`, `edges` and `room` scenes through a Python writer of the real schema (P7). Each scene has a camera path, features with stable ids, σ noise, outliers and visibility, plus a `synth_truth.json`. There's no video.
 
-- [ ] The reader opens every scene, and the truth lists every planted plane.
-- [ ] The same seed gives identical files, and a different seed gives different ones.
-- [ ] In `edges`, points exist only near corners, trim and openings.
+- [x] The reader opens every scene, and the truth lists every planted plane.
+- [x] The same seed gives identical files, and a different seed gives different ones.
+- [x] In `edges`, points exist only near corners, trim and openings.
+- **Result (2026-09-29):** done.
+  - **Scenes:**
+    - `facade`: a 16 × 6 m wall at 8 m plus the ground.
+    - `edges`: a concave corner of two 8 × 6 m walls with features only on the corner line, parapets, bases, two trim lines and two window frames per wall.
+    - `room`: 4 walls plus a floor, with the camera turning 360°.
+  - **Clutter:** every scene has 20 % of its features on no plane.
+  - **Sightings:** stable ids from 2^40; features are visible when inside the image, in front of the camera and on the camera side of their plane; detection probability 0.8; at most 500 per frame. Noise is `noise_m` (1 cm) in every direction plus `ray_noise_per_m` × depth along the view ray.
+  - **Writing:** sessions go through `planelab.writer` (the real schema, one file, no video). `synth_truth.json` holds each plane's normal, offset, corners and feature count.
+  - **Tests:** 10 synth tests plus a headless-Blender import of a synthetic `edges` session (no video, so no background). 74 Python tests, 98.5 % coverage.
 - **Verify:** `pytest --cov`; `ruff`
 - **Depends on:** T6.
 - **Files:** `PlaneLab/src/planelab/{synth,writer,cli}.py`, `PlaneLab/tests/test_synth.py`

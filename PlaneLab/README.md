@@ -22,6 +22,7 @@ python -m planelab info <bundle>          # a .planelab folder, or a zip of one
 python -m planelab info <bundle> --json   # machine-readable
 python -m planelab peek <bundle> [--csv frames.csv]   # readable copy: <bundle>/lab/peek.sqlite
 python -m planelab blend <bundle>                     # ready-to-open <bundle>/lab/replay.blend
+python -m planelab synth <out.planelab> --scene facade|edges|room [--seed 7 --seconds 10 --fps 30]   # known planes
 ```
 
 ### `peek`: see everything in a recording
@@ -115,6 +116,8 @@ PlaneLab/
 │   ├── axes.py       ARKit → Blender: world axes, lens and shift from intrinsics, quaternions
 │   ├── replay.py     packed per-frame arrays behind the Blender timeline
 │   ├── planes.py     ARKit's planes over time: live anchors per frame, boundaries in world coordinates
+│   ├── synth.py      synthetic sessions with known planes (facade, edges, room) and synth_truth.json
+│   ├── writer.py     a minimal schema-v1 writer, used only by synth
 │   ├── cli.py        python -m planelab
 │   └── log.py        silent rotating log file, plus stderr for the CLI
 ├── blender/planelab_blender/  the extension: manifest, import operator, scene build, frame handler; vendor/planelab → src/planelab
