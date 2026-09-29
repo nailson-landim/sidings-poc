@@ -14,6 +14,22 @@ struct RecorderConstantsTests {
         #expect(byKey["const.pixelPoolSize"] == "6")
         #expect(byKey["const.keyframeIntervalS"] == "0.5")
         #expect(byKey["const.lowDiskBytes"] == "1000000000")
+        // Plane Lab parses these back into a LabConfig (P21).
+        #expect(byKey["const.cloudGate"] == "off")
+        #expect(byKey["const.cloudNearCutM"] == "0.25")
+        #expect(byKey["const.cloudFarCutM"] == "0.0")
+        #expect(byKey["const.cloudNormalTrackingOnly"] == "false")
+        #expect(byKey["const.cloudMaxIds"] == "100000")
+        #expect(byKey["const.cloudZScore"] == "2.0")
+    }
+
+    @Test func cloudSettingsFollowTheConstants() {
+        var constants = RecorderConstants()
+        #expect(constants.cloudSettings == CloudSettings())
+        constants.cloudGate = .intended
+        constants.cloudMinSamples = 3
+        #expect(constants.cloudSettings.gate == .intended)
+        #expect(constants.cloudSettings.minSamples == 3)
     }
 
     @Test func metaRowsFollowAModifiedCopy() {

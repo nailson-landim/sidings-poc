@@ -7,6 +7,7 @@ The on-disk contract between the SidingsAR recorder (Swift) and Plane Lab (Pytho
 | `schema_v1.sql` | **The one source of the DDL** (SPEC §17.4 P2). Swift (`SessionSchema.ddl` in PlaneKit) and Python (`planelab.schema.DDL`) embed copies, and a test on each side checks the copy matches this file exactly. |
 | `fixtures/v1/tiny.planelab/` | A 10-frame session written by the real Swift writer: a sealed `session.sqlite` and a 256 × 192 HEVC `video.mov`. |
 | `fixtures/v1/expected.json` | What the fixture must decode to, table by table. |
+| `fixtures/cloud/golden.json` | Frames and the averaged cloud Plane Lab's accumulator builds from them under five settings (SPEC T27). The Swift port (`FeatureAccumulator`) must give the same ids and sample counts, and positions within 2e-6 m. Written by `PlaneLab/scripts/cloud_golden.py`; a Python test keeps it current. |
 
 ## The fixture
 

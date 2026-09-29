@@ -23,6 +23,7 @@ xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR \
 ## Where code goes
 
 - **`PlaneKit/`**: anything expressible without ARKit or RealityKit (geometry, arbitration, smoothing, throttling, mesh-data generation, and the Plane Lab recorder in `Recording/`). The plane code imports only `simd` and Foundation. `Recording/` may also import AVFoundation, CoreVideo and SQLite3, which all exist on macOS, so the whole write path is tested with `swift test` (`../SPEC.md` L11). Never ARKit, RealityKit or UIKit. Every change here gets Swift Testing cases in `PlaneKit/Tests/PlaneKitTests/`. Tests stay on disk.
+- **`PlaneKit/Sources/PlaneKit/Cloud/`**: the averaged cloud (`../SPEC.md` L12), a port of Plane Lab's accumulator. Plane Lab (Python) is the reference: a change to the rules goes into Python first, then `python scripts/cloud_golden.py` rewrites `session-format/fixtures/cloud/golden.json`, and the Swift golden test must pass again.
 - **`SidingsAR/`**: ARKit/RealityKit/UIKit glue. `PlaneAnchorAdapter` (viewer) and `Recording/ARRecordAdapter` (recorder) are the only places that convert ARKit types into PlaneKit types (`../SPEC.md` §17.4 P13).
 - **`legacy/`**: read-only reference. Don't modify or build it.
 
@@ -50,6 +51,7 @@ xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR \
 - Default actor isolation is `MainActor` (`SWIFT_DEFAULT_ACTOR_ISOLATION`). `ARSessionDelegate` is adopted as `@preconcurrency`, and the delegate queue is main.
 - The project uses a **synchronized folder** group (`PBXFileSystemSynchronizedRootGroup`). New files in `SidingsAR/` are picked up automatically, so don't hand-edit `project.pbxproj` to add files. Xcode may rewrite quoting in the file; that's harmless.
 - Info.plist is generated from `INFOPLIST_KEY_*` build settings **plus** `SidingsAR-Info.plist`, which sits outside the synchronized folder so it isn't copied as a resource. Some keys have no generator setting and are silently dropped; `UIFileSharingEnabled` is one of them. Put those in `SidingsAR-Info.plist`, and check the built app with `plutil -p <app>/Info.plist`.
+- **PlaneKit is built with `-O` even in Debug** (`Package.swift`, `../SPEC.md` P26), because Xcode's Run installs Debug builds and the accumulator is about 60 times slower unoptimized (3.2 ms vs 0.055 ms per frame on the Mac). Stepping through PlaneKit in the debugger is less precise; the app target stays `-Onone`.
 - Swift Testing: `#expect(x.mutatingCall())` doesn't compile. Bind to a `let` first.
 - Floating-point boundaries: `10.1 - 10.0 < 0.1`. Don't put test timestamps exactly on a throttle boundary.
 - Video tests: `AVAssetWriter` stores a leading gap as an empty edit, and `AVAssetReaderTrackOutput` handles it differently by mode:

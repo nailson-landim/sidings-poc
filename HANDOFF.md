@@ -33,6 +33,8 @@ Paste this into a new session:
 | T15 LabConfig and presets | Done (2026-09-29) | this commit |
 | T16 Filter, motion gate, accumulator | Done (2026-09-29). It matches a line-by-line port of CurvSurf's Swift. On real recordings, `upstream` = `off` (every frame) | this commit |
 | Averaged cloud in Blender (T21 part, P19) | Done (2026-09-29): `planelab.cloud` plus an *averaged cloud* layer that grows over the timeline, colored by samples (pink, magenta, red), cached in `lab/cloud-<hash>.npz`. **User check open:** rerun `pull.sh 20260929-161400` (or `planelab blend`), F3 › Reload Scripts, scrub | this commit |
+| **L12 (2026-09-29): CurvSurf's accumulator on the phone, live and recorded** | The user chose "Live cloud + record it". Phase 2C in SPEC §18: T27 Swift accumulator, T28 live cloud in SidingsAR, T29 record it (schema v2), T30 the phone's cloud in Blender | — |
+| T27 Swift accumulator (PlaneKit `Cloud/`) | Done (2026-09-29): matches the Python golden (`session-format/fixtures/cloud/golden.json`) to 4.8e-7 m; 0.055 ms per frame; PlaneKit built `-O` in Debug (P26) | this commit |
 | T12, T13, T17–T26 | Not started. T21's ARKit-planes (P17) and averaged-cloud (P19) layers are already done. Next: T17 RANSAC | — |
 
 The checks were green at `e90e034`:

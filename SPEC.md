@@ -1,6 +1,6 @@
 # SPEC: Plane Lab (record on the phone, replay and fit on the Mac)
 
-*Status: **spec approved** (user, 2026-09-28: "Everything seems fine"). **Plan (§17) and tasks (§18) approved 2026-09-28. Phases 0 and 1 are done (Checkpoints 0 and 1 passed); Phase 2 is in progress (T11, T14–T16 done, T10 code done; T21's averaged-cloud layer brought forward, P19, 2026-09-29).** Created 2026-09-25 from `REQUEST.md`; review answers folded in 2026-09-28 (L5–L11). Context: `CONSOLIDATION.md` (D1–D3, §4, §8, §10b).*
+*Status: **spec approved** (user, 2026-09-28: "Everything seems fine"). **Plan (§17) and tasks (§18) approved 2026-09-28. Phases 0 and 1 are done (Checkpoints 0 and 1 passed); Phase 2 is in progress (T11, T14–T16 done, T10 code done; T21's averaged-cloud layer brought forward, P19). 2026-09-29: L12 puts CurvSurf's accumulator on the phone, live and recorded (Phase 2C, T27–T30).** Created 2026-09-25 from `REQUEST.md`; review answers folded in 2026-09-28 (L5–L11). Context: `CONSOLIDATION.md` (D1–D3, §4, §8, §10b).*
 
 This one file holds the spec for the Plane Lab and, once the spec is approved, its plan (§17) and tasks (§18). For this work, `ARKit_WallDetection/tasks/plan.md` and `tasks/todo.md` aren't used.
 
@@ -21,6 +21,7 @@ This one file holds the spec for the Plane Lab and, once the spec is approved, i
 | L9 | **First-launch permissions: Camera and Location.** GPS fixes and compass heading are logged in the session (§3.3, §4). | Decided (user, 2026-09-28) |
 | L10 | **E1 moves to a second site.** The `BUILDING_SAMPLE.png` building has no open ground for a 10–15 m standoff. | Decided (user, 2026-09-28) |
 | L11 | **All recorder logic goes into the `PlaneKit` target** (records, SQLite writer, video writer, constants). No separate `SessionLog` target. | Decided (user, 2026-09-28, §16 Q3) |
+| L12 | **The phone runs CurvSurf's accumulator live and records it** (amends L1). SidingsAR shows the growing averaged cloud while scanning, like CurvSurf's app, and writes it into the session (`cloud` table, schema v2), so Blender can show exactly what the phone had. Plane fitting and tracking stay on the Mac. | Decided (user, 2026-09-29: "Live cloud + record it", after "there are too few points … lets guarantee the iOS app have such thing") |
 
 ## 1. Objective
 
@@ -649,6 +650,9 @@ T1 VideoWriter (PlaneKit, Mac)
                         └─ T17 RANSAC ─ T18 search, extents ─ T19 tracker ─┴─ T20 pipeline, run, export
                                                                                  └─ T21 layers (needs T9) ─ T22 Recompute ─ T23 other operators
 T24 field session 1 (E2, E3) and T25 field session 2 (E1) need Checkpoint 3. T26 docs runs alongside them.
+
+T16 accumulator ─ T27 Swift accumulator (golden from Python) ─┬─ T28 live cloud in SidingsAR (device)
+                                                              └─ T29 record it: schema v2 ─ T30 phone cloud in Blender
 ```
 
 ### 17.3 Phases
@@ -659,6 +663,7 @@ T24 field session 1 (E2, E3) and T25 field session 2 (E1) need Checkpoint 3. T26
 | 1. Tracer bullet | T4–T9 | Mac, iPhone 13 | Checkpoint 1: S11 on a real recording |
 | 2A. Recorder | T10–T13 | Mac, iPhone 13 and 13 Pro | Checkpoint 2A: S1–S6 |
 | 2B. Lab core | T14–T20 | Mac | Checkpoint 2B: S7–S9 |
+| 2C. Cloud on the phone (L12) | T27–T30 | Mac, iPhone 13 | Checkpoint 2C: the phone's cloud grows live and Blender shows the same cloud |
 | 3. Blender | T21–T23 | Mac | Checkpoint 3: S10–S13 |
 | 4. Field work and docs | T24–T26 | Outdoors, Mac | Final: S14, docs |
 
@@ -690,6 +695,12 @@ Minor decisions made while planning, under the user's "minor decisions I trust y
 | P18 | **Missing images at startup** (T10, 2026-09-29): warm the pixel pool when the writer opens, and raise `pixelPoolSize` from 4 to 6 (about 9 MB more at 1440p). Record why each image is missing (`image_skip.*` in `meta`, and an `image_skip` event per burst). The Mac couldn't reproduce the losses, so the fix is a mitigation, and the counters from the next device recording confirm or redirect it. | Every recording lost frames 5–9; the cause couldn't be seen from the data |
 | P19 | **Averaged-cloud layer brought forward from T21** (2026-09-29; the user compared `replay.blend` with CurvSurf's app and chose "Averaged cloud in Blender now"). `planelab.cloud.CloudTimeline` runs filter, gate and accumulator (default `LabConfig`) once over the recording and keeps a snapshot every 6 frames (10 Hz at 60 fps) as changes since the previous one, with a full copy every 50 snapshots (R3). It's cached as `<bundle>/lab/cloud-<hash>.npz`, keyed by the filter, gate and accumulate settings. The Blender import adds an *averaged cloud* object: the frame handler writes the cloud as it was at the current frame, with a `samples` attribute, and a geometry-nodes group splits it into three point clouds by samples in the FIFO: under 10 pale pink, 10–49 magenta, 50+ red. A point cloud carries a single material, so Set Material's selection is ignored there; each band is its own instance. | The user wanted to see what T14–T16 compute, the way CurvSurf's app shows it |
 | P20 | **Screen-sized points and fill on open** (2026-09-29, the user "couldn't even see those points"). Raw and averaged points get radius = size × distance from the recorded camera (0.004 and 0.003, about 6 and 4.5 px of radius at a 1,500 px focal length), like CurvSurf's point sprites; a fixed 6 mm radius was under a pixel at 10 m. The size is a modifier input. Opening a `.blend` fills every layer for the current frame (before, layers stayed as saved until the first frame change). *Also found:* the Plane Lab extension was switched off in the user's Blender preferences, so no layer refreshed at all. | The cloud has to be visible at facade range |
+| P21 | **Cloud settings are recorder constants** (L12, L8): `cloudNearCutM` 0.25, `cloudFarCutM` 0 (off), `cloudNormalTrackingOnly` false, `cloudGate` off, `cloudMoveM` 0.03, `cloudTurnDeg` 3, `cloudMaxSamples` 100, `cloudMinSamples` 5, `cloudZScore` 2, `cloudMaxIds` 100 000: the lab's defaults, which are CurvSurf's. They reach `meta` as `const.cloud*` like every constant, and the Mac rebuilds the same `LabConfig` from them to recompute and compare. The per-point parallax gate isn't ported (it isn't the default). | One set of numbers on both sides |
+| P22 | **Record clears the cloud.** The recorded cloud starts empty at frame 0 and, while recording, only frames the writer accepted feed it, so the Mac's recompute from the same frames must give the same cloud. The live view keeps growing outside recordings; Reset clears it too. | The recording must be reproducible |
+| P23 | **`cloud` rows** (schema v2): every `cloudSnapshotEvery` (6) recorded frames, the changes since the previous row by feature id (ids removed, then ids set with point and sample count), a full copy at the first row and every `cloudFullEvery` (50) rows, and a last row at Stop. Keyed by feature id, not by storage slot, so a reader needs no accumulator. Estimated 5–11 MB/min next to about 82 MB/min of recording; measured at Checkpoint 2C. | Same cadence as P19, so Blender shows it the same way |
+| P24 | **Phone display:** one entity, three mesh parts (the Blender bands: under 10 samples pale pink, 10–49 magenta, 50+ red), each point a camera-facing quad sized by distance (CurvSurf draws ≥ 10 px sprites), rebuilt at 10 Hz on the frame tick through `DynamicMesh`. The accumulator runs on its own queue, never on the delegate. ARKit's yellow feature points keep their toggle. | Memory rules in `ARKit_WallDetection/CLAUDE.md` |
+| P25 | **Accumulator memory:** 1.2 KB per live id (100 samples × 12 B), in chunks of 4,096 ids, so up to about 120 MB at CurvSurf's 100 000 ids. The cloud grows by design (an exception to R10's flat memory), bounded by `cloudMaxIds`; *mem MB* is read at Checkpoint 2C, and `cloudMaxIds` comes down if it hurts. | Fidelity to CurvSurf first, measured before changing it |
+| P26 | **PlaneKit is built optimized in Debug** (`unsafeFlags(["-O"], .when(configuration: .debug))` in `Package.swift`). Xcode's Run installs Debug builds, and the accumulator runs on every frame: 3.2 ms per frame unoptimized against 0.055 ms optimized (Mac). Heat already halves ARKit's rate on the iPhone 13 (R1). The app target stays `-Onone`. Local packages may use unsafe flags; the iOS compile check passes. | Keep the cloud cheap on the phone |
 
 ### 17.5 Risks found while planning
 
@@ -969,6 +980,56 @@ A sheet lists the recordings (date, duration, size, device, read from `meta`), w
 - [ ] **Device:** the same checks pass on the iPhone 13 Pro.
 - [ ] S6: `swift test` is green and the compile check is clean.
 - [ ] Findings are in `ARKit_WallDetection/README.md`. **User:** review.
+
+### Phase 2C: averaged cloud on the phone (L12, added 2026-09-29)
+
+The user asked for CurvSurf's accumulator in the iOS app, live and recorded (L12). The Python accumulator (T16) is the reference: the Swift port must give the same cloud from the same frames.
+
+#### T27. Swift accumulator in PlaneKit · M · L12
+
+`FeatureAccumulator`: a port of CurvSurf's `FeatureCompressor` with the Python accumulator's rules (T16): a FIFO of `cloudMaxSamples` per id, the z-score-filtered mean from `cloudMinSamples` on, and eviction of the oldest id by first sighting beyond `cloudMaxIds`, including an id evicted later in the same frame. Plus the near/far filter and the frame gate (`off`, `intended`, `upstream`), and the cloud constants (P21). Storage is preallocated per slot and grown in chunks (P25). Changes are tracked by id for snapshots.
+
+- [x] Unit tests: FIFO wrap, `min_samples`, the z-score filter, eviction order (same frame too), each gate mode, the near cut.
+- [x] **Golden check:** Python writes `session-format/fixtures/cloud/golden.json` from a synthetic session (a small `max_ids`, so evictions happen), and the Swift replay gives the same ids and sample counts, with positions within 2e-6 m.
+- **Result (2026-09-29):** done. 92 Swift tests (17 new), 121 Python tests.
+  - **Golden:** 30 frames of 60 features (ids above 2^53, 1 cm noise, 5 % outliers), five cases (defaults; a 4-sample FIFO with 50 ids and z-score 1.2; `intended` with near/far cuts; `upstream`; normal tracking only). The largest difference is 4.8e-7 m, which is float32 rounding at 10 m. Changing the z-score by 0.1 or `min_samples` by 1 misses by 1.6 mm to 15 cm or changes the ids, so the test does catch a wrong port.
+  - **Speed** (Mac Studio, 250 sightings per frame, 12,500 averaged points after 60 s at 60 fps): 0.055 ms per frame optimized, worst 0.6 ms; 20 MB of storage. Unoptimized it was 3.2 ms (4.8 ms before a scalar rewrite), hence P26.
+- **Verify:** `swift test`; `pytest`.
+- **Depends on:** T16.
+- **Files:** `PlaneKit/Sources/PlaneKit/Cloud/{FeatureAccumulator,CloudGate}.swift`, `Recording/Constants.swift`, `PlaneKit/Tests/PlaneKitTests/Cloud/`, `PlaneLab/scripts/cloud_golden.py`
+
+#### T28. Live cloud in SidingsAR · M · device
+
+`LiveCloud` (PlaneKit, thread-safe, its own queue) takes each frame's camera, points and ids, and publishes a display copy at 10 Hz. SidingsAR draws it (P24), with an **Averaged cloud** toggle and the point count in the HUD. Reset clears it.
+
+- [ ] Unit tests: `LiveCloud` gives the accumulator's cloud, never blocks the caller, and `clear()` empties it.
+- [ ] **Device:** the cloud grows while scanning, like CurvSurf's app. *mem MB* and fps before and after (the user reports).
+- **Verify:** `swift test`; compile check; device run.
+- **Depends on:** T27.
+- **Files:** `PlaneKit/Sources/PlaneKit/Cloud/LiveCloud.swift`, `SidingsAR/CloudRenderer.swift`, `SidingsAR/ARSessionController.swift`, `SidingsAR/HUDView.swift`
+
+#### T29. Record the cloud: schema v2 · M · L12
+
+The `cloud` table (P23): `frame_idx` INTEGER PK, `full` INTEGER, `removed_ids` BLOB (u64), `ids` BLOB (u64), `points` BLOB (3 × f32), `samples` BLOB (u16). `schema_version` becomes 2 (§3.5), with `schema_v2.sql` as the DDL source. Record clears the cloud (P22), and `LiveCloud` hands rows to `SessionWriter` on the writer's frame numbers. Python reads v1 and v2; a v2 contract fixture (written by Swift) covers `cloud` rows, including a removal and a second full copy.
+
+- [ ] Swift: writer tests for the `cloud` rows, the v2 fixture decodes to `expected.json`, and a v1 file is still readable.
+- [ ] Python: the v2 contract test, `RecordedCloud.at(idx)` rebuilds the cloud from rows, `peek` decodes the table, and `info` prints the phone's final cloud.
+- **Verify:** `swift test`; `pytest`.
+- **Depends on:** T27.
+- **Files:** `session-format/schema_v2.sql`, `session-format/fixtures/v2/`, `PlaneKit/Sources/PlaneKit/Recording/{SessionDatabase,Records,SessionWriter}.swift`, `PlaneLab/src/planelab/{schema,session,peek,info,cloud}.py`
+
+#### T30. The phone's cloud in Blender, and the equality check · S · L12
+
+The averaged-cloud layer shows the recorded cloud when the session has one, otherwise the Mac's recompute (P19). `planelab info` compares the two (the recompute uses the recording's `const.cloud*` settings): same ids, same sample counts, the largest position difference.
+
+- [ ] Headless: on the v2 fixture and a synthetic v2 session, the layer shows the recorded rows.
+- [ ] **Device + user:** a new recording shows the phone's cloud in Blender, and `info` reports it equal to the recompute.
+- **Depends on:** T28, T29.
+- **Files:** `PlaneLab/blender/planelab_blender/layers.py`, `PlaneLab/src/planelab/{cloud,info}.py`
+
+#### Checkpoint 2C
+
+- [ ] **User:** the cloud grows on the phone during a real scan, and the same cloud plays back in Blender. *mem MB*, fps and MB/min are recorded here (P23, P25).
 
 ### Phase 2B: Lab core (Python, Mac only; can start right after T6)
 

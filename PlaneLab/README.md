@@ -126,7 +126,8 @@ PlaneLab/
 │   ├── cli.py        python -m planelab
 │   └── log.py        silent rotating log file, plus stderr for the CLI
 ├── blender/planelab_blender/  the extension: manifest, import operator, scene build, frame handler; vendor/planelab → src/planelab
-├── scripts/          build_extension.sh (the zip), replay_blend.py (behind `blend`), pull.sh (phone → Mac → Blender, see the root README)
+├── scripts/          build_extension.sh (the zip), replay_blend.py (behind `blend`), pull.sh (phone → Mac → Blender, see the root README),
+│                     cloud_golden.py (the accumulator golden the Swift port is checked against, SPEC T27)
 ├── configs/          default.toml (every setting, commented; tested equal to the code) and recall.toml (overrides only)
 ├── spikes/           R2 Blender video spike (see spikes/README.md)
 └── tests/            pytest: the contract (same fixture as Swift), reader, peek, axes, replay, CLI; test_blender.py drives headless Blender
@@ -136,7 +137,7 @@ PlaneLab/
 
 ```bash
 ruff check . && ruff format --check .
-pytest --cov=planelab --cov-fail-under=85     # 119 tests incl. headless-Blender ones, about 99 % coverage
+pytest --cov=planelab --cov-fail-under=85     # 121 tests incl. headless-Blender ones, about 99 % coverage
 ```
 
 The contract test reads `../session-format/fixtures/v1/`, written by the Swift recorder, and compares every table with `expected.json` (SPEC S7). The core also runs under Blender's own interpreter:

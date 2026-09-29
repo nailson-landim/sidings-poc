@@ -251,6 +251,9 @@ ARKit_WallDetection/
 │   │   ├── PlaneTracker.swift      NMS + hysteresis + PlaneTrackerConfig
 │   │   ├── Smoothing.swift         PlaneSmoother (EMA with jump reset)
 │   │   ├── RenderBudget.swift      Throttle, RebuildGate, PointMarkerMesh
+│   │   ├── Cloud/                  CurvSurf's averaged cloud (../SPEC.md L12, T27): the phone's port of Plane Lab's accumulator
+│   │   │   ├── CloudSettings.swift     CloudSettings, CloudGate, CloudPointFilter (near/far cut), CloudFrameGate (motion gate)
+│   │   │   └── FeatureAccumulator.swift  FeatureAccumulator (FIFO per id, z-score mean, eviction, change tracking), CloudPipeline
 │   │   └── Recording/              Plane Lab recorder (../SPEC.md §4), being built
 │   │       ├── Constants.swift     RecorderConstants: every recorder setting, written to each session's meta
 │   │       ├── Records.swift       FrameRecord, AnchorRecord, LocationRecord, HeadingRecord, EventRecord
@@ -266,7 +269,7 @@ ARKit_WallDetection/
 
 ## Testing
 
-`cd PlaneKit && swift test` runs 75 Swift Testing cases in 11 suites:
+`cd PlaneKit && swift test` runs 92 Swift Testing cases in 14 suites:
 
 | Suite | Covers |
 |---|---|
@@ -274,7 +277,10 @@ ARKit_WallDetection/
 | Non-Maximum Suppression | Coplanar duplicates, perpendicular walls, parallel walls 30 cm apart, disjoint coplanar walls, floor vs. table, horizontal vs. vertical, chains of duplicates, removal, a 50-plane timing bound |
 | Smoothing & hysteresis | EMA convergence and jump reset, winner stable under ±5% jitter, challenger takeover after the streak, a weak challenger never winning |
 | Render budget | Throttle, RebuildGate (first build, unchanged geometry, deferred change, area delta), octahedra counts, index range and outward winding, subsampling |
-| Recorder constants | Every `RecorderConstants` property becomes one `const.*` meta row |
+| Recorder constants | Every `RecorderConstants` property becomes one `const.*` meta row, including the `const.cloud*` rows Plane Lab parses back |
+| Feature accumulator | Mean from `minSamples`, FIFO wrap, the z-score filter (and all-rejected fallback), eviction by first sighting (also later in the same frame), changes as removals then values, clear, storage in 4,096-id chunks reused after eviction |
+| Cloud filter and gate | `intended` waits for 3 cm, `upstream` passes small steps and blocks big ones, turning passes, near/far cuts, skipping limited tracking |
+| Averaged cloud golden | The Swift pipeline replays `../session-format/fixtures/cloud/golden.json` (written by Plane Lab's accumulator) under five settings: same ids and sample counts, positions within 2e-6 m. Regenerate on the Python side: `python scripts/cloud_golden.py` |
 | Recording policy | `StopReason` values match the spec, the low-disk rule, tracking events at the start and on change only, image skips counted per frame and reported once per burst |
 | BLOB packing | Column-major little-endian matrices (64 and 36 bytes), 12-byte points, uint64 ids, empty arrays, wrong sizes rejected |
 | Session database | Every table round-trips, a sealed session is one file, empty point BLOBs aren't NULL, mismatched points/ids refused, unknown `schema_version` refused |

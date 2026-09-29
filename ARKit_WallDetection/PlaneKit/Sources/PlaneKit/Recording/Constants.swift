@@ -22,7 +22,29 @@ public struct RecorderConstants: Sendable, Equatable {
     public var lowDiskBytes: Int64 = 1_000_000_000
     public var headingFilterDeg = 1.0
 
+    // Averaged cloud (L12, P21): CurvSurf's accumulator with Plane Lab's defaults. The Mac rebuilds its LabConfig
+    // from these `const.cloud*` rows to recompute the same cloud.
+    public var cloudNearCutM = 0.25
+    /// 0 keeps every distance.
+    public var cloudFarCutM = 0.0
+    public var cloudNormalTrackingOnly = false
+    public var cloudGate = CloudGate.off
+    public var cloudMoveM = 0.03
+    public var cloudTurnDeg = 3.0
+    public var cloudMaxSamples = 100
+    public var cloudMinSamples = 5
+    public var cloudZScore = 2.0
+    public var cloudMaxIds = 100_000
+
     public init() {}
+
+    public var cloudSettings: CloudSettings {
+        CloudSettings(
+            nearCutM: cloudNearCutM, farCutM: cloudFarCutM, normalTrackingOnly: cloudNormalTrackingOnly,
+            gate: cloudGate, moveM: cloudMoveM, turnDeg: cloudTurnDeg, maxSamples: cloudMaxSamples,
+            minSamples: cloudMinSamples, zScore: cloudZScore, maxIds: cloudMaxIds
+        )
+    }
 
     public static let current = RecorderConstants()
 

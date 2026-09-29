@@ -8,7 +8,9 @@ let package = Package(
         .library(name: "PlaneKit", targets: ["PlaneKit"])
     ],
     targets: [
-        .target(name: "PlaneKit"),
+        // Optimized in Debug too (SPEC P26): Xcode's Run installs Debug builds, and the averaged cloud and the recorder
+        // run on every ARKit frame. Unoptimized, the accumulator costs about 60 times more per frame.
+        .target(name: "PlaneKit", swiftSettings: [.unsafeFlags(["-O"], .when(configuration: .debug))]),
         .testTarget(name: "PlaneKitTests", dependencies: ["PlaneKit"])
     ]
 )
