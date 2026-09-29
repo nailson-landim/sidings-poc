@@ -1002,7 +1002,8 @@ The user asked for CurvSurf's accumulator in the iOS app, live and recorded (L12
 
 `LiveCloud` (PlaneKit, thread-safe, its own queue) takes each frame's camera, points and ids, and publishes a display copy at 10 Hz. SidingsAR draws it (P24), with an **Averaged cloud** toggle and the point count in the HUD. Reset clears it.
 
-- [ ] Unit tests: `LiveCloud` gives the accumulator's cloud, never blocks the caller, and `clear()` empties it.
+- [x] Unit tests: `LiveCloud` gives the accumulator's cloud, never blocks the caller, and `clear()` empties it.
+- **Code (2026-09-29):** `LiveCloud` (a display copy every 6 frames, at most 120 frames waiting, drops counted), `CloudMesh` (squares of half-size 0.003 × distance, 3 bands, at most 40,000 points drawn), `SidingsAR/CloudRenderer.swift` (one entity, one part and `UnlitMaterial` per band, generated once and then `replace(with:)`, rebuilt every 0.2 s). The controller copies each frame once (`ARRecordAdapter.frameRecord`) for both the cloud and the recorder. HUD: a **cloud** count and an **Averaged cloud** toggle in Debug. 99 Swift tests; the iOS compile check is clean.
 - [ ] **Device:** the cloud grows while scanning, like CurvSurf's app. *mem MB* and fps before and after (the user reports).
 - **Verify:** `swift test`; compile check; device run.
 - **Depends on:** T27.

@@ -13,6 +13,7 @@ struct HUDView: View {
             HStack {
                 stat("planes", "\(controller.keptCount)/\(controller.rawCount)")
                 stat("points", "\(controller.featurePointCount)")
+                stat("cloud", "\(controller.cloudCount)")
                 stat("mem MB", String(format: "%.0f", controller.memoryMB))
                 stat("fps", String(format: "%.0f", controller.fps))
                 stat("tracking", controller.trackingName)
@@ -25,6 +26,7 @@ struct HUDView: View {
                 }
                 .pickerStyle(.segmented)
                 Menu {
+                    Toggle("Averaged cloud", isOn: $controller.showCloud)
                     Toggle("Feature points", isOn: $controller.showFeaturePoints)
                     Toggle("Anchor markers", isOn: $controller.showMarkers)
                     Toggle("Hide duplicates", isOn: $controller.hideSuppressed)

@@ -63,8 +63,9 @@ final class SessionRecorder {
         tracking = TrackingChangeDetector()
     }
 
-    /// Called from `session(_:didUpdate:)` for every frame. Never blocks and never keeps `frame`.
-    func capture(_ frame: ARFrame) {
+    /// Called from `session(_:didUpdate:)` for every frame, with `ARRecordAdapter.frameRecord(frame)`. Never blocks
+    /// and never keeps `frame`.
+    func capture(_ frame: ARFrame, metadata: FrameRecord) {
         guard isRecording, let writer else { return }
         firstTime = firstTime ?? frame.timestamp
 
@@ -74,7 +75,6 @@ final class SessionRecorder {
         } else {
             imagesDropped += 1
         }
-        let metadata = ARRecordAdapter.frameRecord(frame)
         let index = writer.enqueue(metadata, image: image)
         if index == 0 {
             writer.enqueue(EventRecord(frameIndex: 0, kind: "record", detail: "start"))

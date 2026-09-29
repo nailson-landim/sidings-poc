@@ -32,6 +32,15 @@ final class ARSessionController: NSObject {
     var showStatistics = false {
         didSet { applyDebugOptions() }
     }
+    /// The live averaged cloud (`../SPEC.md` L12, T28).
+    var showCloud = true {
+        didSet {
+            cloudRenderer.anchor.isEnabled = showCloud
+            cloudThrottle.reset()
+        }
+    }
+    /// Averaged points in the live cloud.
+    private(set) var cloudCount = 0
     private(set) var rawCount = 0
     private(set) var keptCount = 0
     private(set) var featurePointCount = 0
@@ -48,10 +57,16 @@ final class ARSessionController: NSObject {
     static let resolveInterval: TimeInterval = 0.1
     static let hudInterval: TimeInterval = 0.1
     static let memoryInterval: TimeInterval = 1.0
+    /// Cloud mesh rebuilds (P24): the squares turn to face the camera and new points appear at this cadence.
+    static let cloudInterval: TimeInterval = 0.2
 
     @ObservationIgnored let arView: ARView
     /// Plane Lab recorder (`../SPEC.md` §4).
     @ObservationIgnored let recorder = SessionRecorder()
+    /// CurvSurf's accumulator, on its own queue (`../SPEC.md` L12, T28).
+    @ObservationIgnored let liveCloud = LiveCloud(settings: RecorderConstants.current.cloudSettings)
+    @ObservationIgnored private let cloudRenderer = CloudRenderer()
+    @ObservationIgnored private var cloudThrottle = Throttle(interval: ARSessionController.cloudInterval)
     @ObservationIgnored private let renderer: PlaneRenderer
     @ObservationIgnored private let tracker = PlaneTracker()
     @ObservationIgnored private var anchors: [UUID: ARPlaneAnchor] = [:]
@@ -78,6 +93,7 @@ final class ARSessionController: NSObject {
             .disableGroundingShadows, .disableAREnvironmentLighting, .disablePersonOcclusion, .disableFaceMesh
         ]
         applyDebugOptions()
+        arView.scene.addAnchor(cloudRenderer.anchor)
         sceneUpdate = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] _ in
             guard let self else { return }
             self.renderer.labels.layout(in: self.arView)
@@ -117,6 +133,9 @@ final class ARSessionController: NSObject {
         dirty.removeAll()
         needsResolve = false
         interruptionBanner = nil
+        liveCloud.clear()
+        cloudRenderer.clear()
+        cloudCount = 0
         publishCounts()
         run(options: [.resetTracking, .removeExistingAnchors])
     }
@@ -230,13 +249,23 @@ extension ARSessionController: @preconcurrency ARSessionDelegate {
             fps = Double(fpsWindow.frames) / (now - fpsWindow.start)
             fpsWindow = (now, 0)
         }
-        recorder.capture(frame)
+        // One copy of the frame's pose and points, shared by the cloud and the recorder.
+        let record = ARRecordAdapter.frameRecord(frame)
+        liveCloud.ingest(
+            camera: record.camera, trackingNormal: record.tracking == .normal, points: record.points, ids: record.pointIDs
+        )
+        recorder.capture(frame, metadata: record)
         if (needsResolve || !dirty.isEmpty) && resolveThrottle.fire(now: now) {
             resolveAndRender(now: now)
         }
+        if showCloud && cloudThrottle.fire(now: now) {
+            cloudRenderer.update(liveCloud.latest().state, camera: record.camera)
+        }
         if hudThrottle.fire(now: now) {
-            let points = frame.rawFeaturePoints?.points.count ?? 0
+            let points = record.points.count
             if points != featurePointCount { featurePointCount = points }
+            let cloud = liveCloud.latest().state.count
+            if cloud != cloudCount { cloudCount = cloud }
         }
         if memoryThrottle.fire(now: now), let mb = MemoryFootprint.currentMB() {
             memoryMB = mb

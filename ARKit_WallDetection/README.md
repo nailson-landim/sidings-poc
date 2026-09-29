@@ -100,6 +100,7 @@ The gap between the origin and the center shows that ARKit anchors a plane where
 |---|---|
 | **planes** `kept/raw` | Planes shown after suppression / live ARKit plane anchors |
 | **points** | ARKit raw feature points in the current frame |
+| **cloud** | Averaged points in the live cloud (CurvSurf's accumulator, below) |
 | **mem MB** | Process physical footprint, refreshed at 1 Hz. The same number as Xcode's memory gauge and the jetsam limit. |
 | **fps** | Frames ARKit delivered in the last second. It was about 30 on an iPhone 13 during the first R1 spike, not 60. |
 | **tracking** | `normal` / `limited` / `n/a` (details appear in the top banner) |
@@ -108,7 +109,8 @@ The gap between the origin and the center shows that ARKit anchors a plane where
 - **Control row** (one row, for the landscape layout): the detection picker, Debug, Record/Stop and Reset.
 - **Detection picker:** `Vertical` / `Horizontal` / `Both`. Changing it resets the session.
 - **Debug menu (ladybug):**
-  - Feature points (on by default)
+  - Averaged cloud (on by default): CurvSurf's averaged feature cloud, growing as you scan (`../SPEC.md` L12, T28). Every feature id seen at least 5 times becomes one point at the z-score-filtered mean of its last 100 sightings, drawn as a small square that keeps about the same size on screen at any distance. Color by samples: under 10 pale pink, 10–49 magenta, 50+ red (the same bands as Plane Lab's Blender layer). The accumulator runs on its own queue, and the mesh is rebuilt 5 times a second. Reset clears it. Settings are `RecorderConstants.cloud*`.
+  - Feature points (on by default): ARKit's own per-frame raw points (yellow)
   - Anchor markers
   - Hide duplicates
   - RealityKit render statistics
@@ -237,6 +239,7 @@ ARKit_WallDetection/
 │   ├── PlaneAnchorAdapter.swift ARPlaneAnchor → PlaneObservation (the ARKit boundary)
 │   ├── PlaneRenderer.swift      AnchorEntity per plane: fill, markers, labels, material cache
 │   ├── DynamicMesh.swift        MeshResource allocated once, updated with replace(with:)
+│   ├── CloudRenderer.swift      The live averaged cloud: one entity, one mesh part per sample-count band
 │   ├── AnchorMarkers.swift      Origin/center spheres + one boundary-points mesh
 │   ├── LabelOverlay.swift       Screen-space UIKit labels
 │   ├── PlaneStyle.swift         Colors, opacities, label text
@@ -253,7 +256,9 @@ ARKit_WallDetection/
 │   │   ├── RenderBudget.swift      Throttle, RebuildGate, PointMarkerMesh
 │   │   ├── Cloud/                  CurvSurf's averaged cloud (../SPEC.md L12, T27): the phone's port of Plane Lab's accumulator
 │   │   │   ├── CloudSettings.swift     CloudSettings, CloudGate, CloudPointFilter (near/far cut), CloudFrameGate (motion gate)
-│   │   │   └── FeatureAccumulator.swift  FeatureAccumulator (FIFO per id, z-score mean, eviction, change tracking), CloudPipeline
+│   │   │   ├── FeatureAccumulator.swift  FeatureAccumulator (FIFO per id, z-score mean, eviction, change tracking), CloudPipeline
+│   │   │   ├── LiveCloud.swift     The pipeline on its own queue: non-blocking ingest, a display copy every 6 frames
+│   │   │   └── CloudMesh.swift     Camera-facing squares sized by distance, split into sample-count bands
 │   │   └── Recording/              Plane Lab recorder (../SPEC.md §4), being built
 │   │       ├── Constants.swift     RecorderConstants: every recorder setting, written to each session's meta
 │   │       ├── Records.swift       FrameRecord, AnchorRecord, LocationRecord, HeadingRecord, EventRecord
@@ -269,7 +274,7 @@ ARKit_WallDetection/
 
 ## Testing
 
-`cd PlaneKit && swift test` runs 92 Swift Testing cases in 14 suites:
+`cd PlaneKit && swift test` runs 99 Swift Testing cases in 16 suites:
 
 | Suite | Covers |
 |---|---|
@@ -280,6 +285,8 @@ ARKit_WallDetection/
 | Recorder constants | Every `RecorderConstants` property becomes one `const.*` meta row, including the `const.cloud*` rows Plane Lab parses back |
 | Feature accumulator | Mean from `minSamples`, FIFO wrap, the z-score filter (and all-rejected fallback), eviction by first sighting (also later in the same frame), changes as removals then values, clear, storage in 4,096-id chunks reused after eviction |
 | Cloud filter and gate | `intended` waits for 3 cm, `upstream` passes small steps and blocks big ones, turning passes, near/far cuts, skipping limited tracking |
+| Live cloud | Same cloud as the pipeline on the golden frames, a display copy every 6 frames, a stalled queue dropping frames in under 50 ms without blocking, clear |
+| Cloud mesh | Sample-count bands, squares growing with distance and facing the camera, striding beyond the point limit |
 | Averaged cloud golden | The Swift pipeline replays `../session-format/fixtures/cloud/golden.json` (written by Plane Lab's accumulator) under five settings: same ids and sample counts, positions within 2e-6 m. Regenerate on the Python side: `python scripts/cloud_golden.py` |
 | Recording policy | `StopReason` values match the spec, the low-disk rule, tracking events at the start and on change only, image skips counted per frame and reported once per burst |
 | BLOB packing | Column-major little-endian matrices (64 and 36 bytes), 12-byte points, uint64 ids, empty arrays, wrong sizes rejected |
