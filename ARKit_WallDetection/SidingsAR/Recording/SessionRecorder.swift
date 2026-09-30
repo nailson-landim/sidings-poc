@@ -42,7 +42,10 @@ final class SessionRecorder {
     @ObservationIgnored private let diskGuard = DiskGuard(constants: .current)
     @ObservationIgnored private let logger = Logger(subsystem: "br.com.neuralnexgen.sidingsar", category: "recorder")
 
-    func start(configuration: ARConfiguration?, mode: DetectionMode, lidar: Bool, cloud: LiveCloud) {
+    func start(
+        configuration: ARConfiguration?, mode: DetectionMode, lidar: Bool, cloud: LiveCloud,
+        extraMeta: [(key: String, value: String)] = []
+    ) {
         guard !isRecording else { return }
         let format = configuration?.videoFormat
         let size = format.map { (width: Int($0.imageResolution.width), height: Int($0.imageResolution.height)) }
@@ -50,7 +53,7 @@ final class SessionRecorder {
             let bundle = try Self.sessionsFolder().appendingPathComponent("\(Self.stamp()).planelab")
             let created = try SessionWriter(
                 bundle: bundle,
-                meta: Self.meta(configuration: configuration, mode: mode, lidar: lidar),
+                meta: Self.meta(configuration: configuration, mode: mode, lidar: lidar) + extraMeta,
                 videoSize: size
             )
             writer = created
@@ -165,6 +168,12 @@ final class SessionRecorder {
         guard isRecording, let writer else { return }
         marks += 1
         writer.enqueue(EventRecord(frameIndex: max(writer.lastFrameIndex, 0), kind: "mark", detail: "mark \(marks)"))
+    }
+
+    /// Any other moment worth finding later, for example a camera setting changed while recording.
+    func note(kind: String, detail: String) {
+        guard isRecording, let writer else { return }
+        writer.enqueue(EventRecord(frameIndex: max(writer.lastFrameIndex, 0), kind: kind, detail: detail))
     }
 
     /// Finishes the bundle in the background. `reason` goes to `meta.stop_reason` (SPEC §3.3, §4 R3 and R9).

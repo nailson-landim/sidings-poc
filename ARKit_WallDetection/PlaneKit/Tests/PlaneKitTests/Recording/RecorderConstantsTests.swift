@@ -27,6 +27,7 @@ struct RecorderConstantsTests {
         #expect(byKey["const.stillTurnDeg"] == "10.0")
         #expect(byKey["const.stillMinIntervalS"] == "0.25")
         #expect(byKey["const.stillJPEGQuality"] == "0.92")
+        #expect(byKey["const.maxExposureS"] == "0.001")
     }
 
     @Test func cloudSettingsFollowTheConstants() {

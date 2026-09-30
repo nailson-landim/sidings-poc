@@ -39,6 +39,20 @@ final class ARSessionController: NSObject {
             cloudThrottle.reset()
         }
     }
+    /// Longest exposure auto exposure may use (P30); changes apply live and are logged in a recording.
+    var exposureCap = ExposureCap(seconds: RecorderConstants.current.maxExposureS) {
+        didSet {
+            guard exposureCap != oldValue else { return }
+            exposure.cap = exposureCap
+            exposure.refresh()
+            recorder.note(kind: "exposure_cap", detail: "\(exposureCap.rawValue)")
+        }
+    }
+    /// Current exposure time (ms) and ISO; ISO is nil when ARKit doesn't share the camera.
+    private(set) var exposureMS: Double = 0
+    private(set) var iso: Float?
+    /// False when ARKit won't let us set the exposure; nil before the first frame.
+    private(set) var exposureControlAvailable: Bool?
     /// Averaged points in the live cloud.
     private(set) var cloudCount = 0
     private(set) var rawCount = 0
@@ -66,6 +80,7 @@ final class ARSessionController: NSObject {
     /// CurvSurf's accumulator, on its own queue (`../SPEC.md` L12, T28).
     @ObservationIgnored let liveCloud = LiveCloud(settings: RecorderConstants.current.cloudSettings)
     @ObservationIgnored private let cloudRenderer = CloudRenderer()
+    @ObservationIgnored private let exposure = ExposureControl(cap: ExposureCap(seconds: RecorderConstants.current.maxExposureS))
     @ObservationIgnored private var cloudThrottle = Throttle(interval: ARSessionController.cloudInterval)
     @ObservationIgnored private let renderer: PlaneRenderer
     @ObservationIgnored private let tracker = PlaneTracker()
@@ -121,7 +136,14 @@ final class ARSessionController: NSObject {
         if recorder.isRecording {
             recorder.stop(reason: .user)
         } else {
-            recorder.start(configuration: arView.session.configuration, mode: mode, lidar: isLiDARDevice, cloud: liveCloud)
+            let exposureMeta = [
+                ("exposure_cap_s", "\(exposureCap.rawValue)"),
+                ("exposure_control", exposureControlAvailable == true ? "1" : "0"),
+            ]
+            recorder.start(
+                configuration: arView.session.configuration, mode: mode, lidar: isLiDARDevice, cloud: liveCloud,
+                extraMeta: exposureMeta
+            )
         }
     }
 
@@ -157,6 +179,7 @@ final class ARSessionController: NSObject {
         let format = config.videoFormat
         logger.info("Running session: mode=\(self.mode.rawValue, privacy: .public) lidar=\(self.isLiDARDevice) format=\(Int(format.imageResolution.width))x\(Int(format.imageResolution.height))@\(format.framesPerSecond) hires=\(format.isRecommendedForHighResolutionFrameCapturing)")
         arView.session.run(config, options: options)
+        exposure.sessionDidRun()
     }
 
     private func applyDebugOptions() {
@@ -273,6 +296,10 @@ extension ARSessionController: @preconcurrency ARSessionDelegate {
             cloudRenderer.update(liveCloud.latest().state, camera: record.camera)
         }
         if hudThrottle.fire(now: now) {
+            exposure.refresh()
+            exposureMS = frame.camera.exposureDuration * 1000
+            iso = exposure.iso
+            if exposureControlAvailable != exposure.isAvailable { exposureControlAvailable = exposure.isAvailable }
             let points = record.points.count
             if points != featurePointCount { featurePointCount = points }
             let cloud = liveCloud.latest().state.count

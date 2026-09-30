@@ -1,3 +1,4 @@
+import PlaneKit
 import SwiftUI
 
 struct HUDView: View {
@@ -16,6 +17,8 @@ struct HUDView: View {
                 stat("cloud", "\(controller.cloudCount)")
                 stat("mem MB", String(format: "%.0f", controller.memoryMB))
                 stat("fps", String(format: "%.0f", controller.fps))
+                stat("exp ms", String(format: controller.exposureMS < 1 ? "%.2f" : "%.1f", controller.exposureMS))
+                stat("ISO", controller.iso.map { String(format: "%.0f", $0) } ?? "–")
                 stat("tracking", controller.trackingName)
                 stat("LiDAR", controller.isLiDARDevice ? "yes" : "no")
             }
@@ -31,6 +34,14 @@ struct HUDView: View {
                     Toggle("Anchor markers", isOn: $controller.showMarkers)
                     Toggle("Hide duplicates", isOn: $controller.hideSuppressed)
                     Toggle("Render statistics", isOn: $controller.showStatistics)
+                    if controller.exposureControlAvailable == false {
+                        Text("Exposure: ARKit won't share the camera")
+                    } else {
+                        Picker("Max exposure", selection: $controller.exposureCap) {
+                            ForEach(ExposureCap.allCases) { Text($0.label).tag($0) }
+                        }
+                        .pickerStyle(.menu)
+                    }
                 } label: {
                     Label("Debug", systemImage: "ladybug")
                 }

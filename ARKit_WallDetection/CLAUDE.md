@@ -36,6 +36,7 @@ xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR \
 - **Hysteresis counts resolves, not seconds.** Changing `resolveInterval` changes the real-time meaning of `challengerFrames`.
 - **Never retain `ARFrame`s.** Read what you need inside `session(_:didUpdate frame:)`. The recorder copies `capturedImage` into its own pool buffer there and hands only that copy to `SessionWriter`.
 - **Stills (P29) arrive off the delegate.** `captureHighResolutionFrame`'s completion is written as a `@Sendable` closure, so Swift doesn't assume it runs on the main actor (a main-actor closure called from another queue traps at runtime). It only touches thread-safe things: `ARRecordAdapter.still` (`nonisolated`), `StillWriter` and `SessionWriter`. `StillWriter.begin()` allows one still in flight.
+- **Exposure (P30) goes through `ExposureControl` only.** It sets `activeMaxExposureDuration` on ARKit's configurable capture device inside `lockForConfiguration`. An out-of-range duration raises an Objective-C exception that Swift can't catch, so values are clamped to the active format, using its own `CMTime` at the limits. The cap resets whenever the format changes, so it's re-checked on the HUD tick.
 - **The recorder never blocks the delegate.** `SessionWriter.enqueue` takes a lock and hands off to its queue. A full queue drops the frame, and a busy pool logs the frame without an image.
 
 ## Memory rules (v2.1; they fixed a runaway-RAM regression)

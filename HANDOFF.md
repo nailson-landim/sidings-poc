@@ -44,7 +44,8 @@ Paste this into a new session:
 | T12 Permissions and GPS · T13 Sessions sheet | T12 **deferred** (user, 2026-09-30: GPS not needed for now, L9). T13 **closed** (`pull.sh` gets recordings off the phone). No code for either | — |
 | Checkpoint 2A | **Waived** (user, 2026-09-30) with the recorder tasks | — |
 | T24 Field session 1 (building) | **Recorded** (user, 2026-09-30): `20260929-172952` and `20260930-102759`, iPhone 13. The E2/E3 comparison waits for our planes (T21) | — |
-| **T31 High-resolution stills (P29, 2026-09-30)** | Code done: full-sensor JPEGs with ARKit poses in `stills/` while recording, for an SfM (COLMAP) experiment. **Device check open:** the user records outdoors | this commit |
+| **T31 High-resolution stills (P29, 2026-09-30)** | Code done: full-sensor JPEGs with ARKit poses in `stills/` while recording, for an SfM (COLMAP) experiment. First run `20260930-171700`: 123 stills at 4032 × 3024, none failed, **all blurred** (exposure 9.4 ms) | `508167d` |
+| **T32 Exposure cap (P30, 2026-09-30)** | Code done: max exposure 1 ms by default, live in Debug › Max exposure, *exp ms* and *ISO* in the HUD. **Device check open:** does ARKit share the camera, and are the stills sharp? | this commit |
 | T17–T23, T25, T26 | Not started. T21's ARKit-planes (P17) and averaged-cloud (P19) layers are already done. Next: T17 | — |
 
 The checks were green at `e90e034`:
@@ -56,7 +57,7 @@ The checks were green at `e90e034`:
 ## Waiting on the user
 
 1. **T2 scrub check.** The user opens `~/PlaneLab/spikes/r2/r2_scrub.blend`, presses Numpad 0 to look through the camera, and scrubs and plays. They say whether it feels responsive.
-2. **T31 stills check.** An outdoor recording with stills: still size, stills per minute, fps in the high-res format, *mem MB*, and missing video images. Then pull it and look at `stills/`.
+2. **T32 exposure check.** Before recording, the HUD's *exp ms* should drop to about 1 with *ISO* showing a value (else ARKit didn't share the camera). Then a recording with stills at a normal walk; pull it and check blur, noise and tracking.
 3. **P27 pick check.** In `20260930-102759`'s `replay.blend`, the user runs Pick Point on a few dots, in camera view and in a free view. The marker should land on the clicked dot, and the dot sizes and sliders should feel right. Headless tests can't drive the viewport's `perspective_matrix` or a modal click.
 
 ## Next steps for Claude

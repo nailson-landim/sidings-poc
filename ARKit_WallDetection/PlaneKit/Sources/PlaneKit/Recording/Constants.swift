@@ -50,6 +50,9 @@ public struct RecorderConstants: Sendable, Equatable {
     public var stillMinIntervalS = 0.25
     /// JPEG quality, 0 to 1.
     public var stillJPEGQuality = 0.92
+    /// Longest exposure auto exposure may use, seconds (P30); ISO rises to make up for it. 0 leaves ARKit's choice.
+    /// The Debug menu changes it live.
+    public var maxExposureS = 0.001
 
     public init() {}
 
