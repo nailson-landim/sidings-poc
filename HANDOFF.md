@@ -2,7 +2,7 @@
 
 
 **Day wrap-up: [`28_SEP_26-HANDOFF.md`](28_SEP_26-HANDOFF.md)** has everything built, tested and found on 28 Sep, plus the full TODO.
-*Last updated 2026-09-29 after the averaged-cloud layer (P19). Read this first when resuming; `SPEC.md` has the full detail.*
+*Last updated 2026-09-30 after Pick Point and bigger dots (P27). Read this first when resuming; `SPEC.md` has the full detail.*
 
 ## Resume prompt
 
@@ -38,6 +38,7 @@ Paste this into a new session:
 | T28 Live cloud in SidingsAR | Code done (2026-09-29). **Device check open:** the cloud grows while scanning; the user reports *mem MB* and fps | this commit |
 | T29 Record the cloud: schema v2 | Done (2026-09-29): `cloud` table, v2 fixture (v1 kept and still read on both sides), `info`/`peek` show the phone's cloud | this commit |
 | T30 The phone's cloud in Blender + equality check | Code done (2026-09-29): Blender shows the recorded cloud, `info --check-cloud` (run by `pull.sh`) compares it with the Mac's recompute; equal on a Swift-recorded fixture. **Device check open** with T28: record on the phone, pull, the check says equal | this commit |
+| **P27 (2026-09-30): Pick Point and bigger dots** | Code done. The Plane Lab sidebar tab (*Points*) has **Pick Point**: click a dot, and a marker follows that feature id while the tab shows its raw and averaged coordinates (ARKit and Blender), samples, frames seen and distance. Dots are twice as big, with a size slider per layer. On `20260930-102759` a pick takes 0.5 ms and a frame change 1.2 ms. `replay.blend` has been rebuilt. **User check open:** F3 › Reload Scripts, N › Plane Lab, Pick Point, click a dot, scrub | this commit |
 | T12, T13, T17–T26 | Not started. T21's ARKit-planes (P17) and averaged-cloud (P19) layers are already done. Next: T17 RANSAC | — |
 
 The checks were green at `e90e034`:
@@ -49,6 +50,7 @@ The checks were green at `e90e034`:
 ## Waiting on the user
 
 1. **T2 scrub check.** The user opens `~/PlaneLab/spikes/r2/r2_scrub.blend`, presses Numpad 0 to look through the camera, and scrubs and plays. They say whether it feels responsive.
+2. **P27 pick check.** In `20260930-102759`'s `replay.blend`, the user runs Pick Point on a few dots, in camera view and in a free view. The marker should land on the clicked dot, and the dot sizes and sliders should feel right. Headless tests can't drive the viewport's `perspective_matrix` or a modal click.
 
 ## Next steps for Claude
 

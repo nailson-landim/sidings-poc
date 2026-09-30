@@ -2,7 +2,7 @@
 
 Replay SidingsAR recordings on the Mac and fit planes offline: *accumulate → fit → track*, driven from Blender or the command line. The spec, plan and tasks live in [`../SPEC.md`](../SPEC.md); this README covers what exists so far.
 
-**Status (2026-09-29):** the session reader, `planelab info` (T6), `planelab peek`, the Blender import (camera, video, raw points, ARKit planes, and the averaged cloud), synthetic sessions (T14), `LabConfig` (T15), and CurvSurf's filter, gate and accumulator (T16) work. Plane fitting comes next (SPEC §18, T17 onward).
+**Status (2026-09-30):** the session reader, `planelab info` (T6), `planelab peek`, the Blender import (camera, video, raw points, ARKit planes, and the averaged cloud) with Pick Point in the Plane Lab tab, synthetic sessions (T14), `LabConfig` (T15), and CurvSurf's filter, gate and accumulator (T16) work. Plane fitting comes next (SPEC §18, T17 onward).
 
 ## Setup
 
@@ -75,9 +75,19 @@ cloud     phone: 2 averaged points after 2 rows (0 frames missed)
 - **Trail:** a static polyline of the whole camera path.
 - **Video:** `video.mov` is the camera's background. The clip starts at `1 + first frame with an image`, because Blender drops a leading gap in the file but keeps later ones, holding the previous image (SPEC §15 R2). Looking through the camera shows the image with the points on top.
 - **ARKit planes:** every plane anchor alive at the current frame, as its boundary polygon in SidingsAR's colors (wall cyan, floor green, ceiling yellow, table/seat orange, door/window purple), 35 % opaque. It comes from the recorded add/update/remove callbacks (`planelab.planes`). Recordings made before T11 (2026-09-28) have no anchors.
-- **Raw points:** the current frame's feature points (yellow). A frame-change handler refills them from arrays cached per recording; nothing else is keyframed. Points keep a steady size on screen: radius = *Size* × distance from the recorded camera (the modifier's *Size* input; SPEC P20).
+- **Raw points:** the current frame's feature points (yellow). A frame-change handler refills them from arrays cached per recording; nothing else is keyframed. Points keep a steady size on screen: radius = *Size* × distance from the recorded camera. *Size* defaults to 0.008 for raw dots and 0.006 for averaged ones, about 12 and 9 px of radius in the recorded image (SPEC P20, doubled in P27), and each layer has a slider in the Plane Lab tab.
 - **Averaged cloud:** the phone's own cloud when the recording has one (schema v2, SPEC T29–T30), otherwise the Mac's recompute; the import's report says which. What CurvSurf's app shows, as it was at the current frame: every feature id with at least 5 samples, at the z-score-filtered mean of its last 100 sightings (T16, default `LabConfig`). Colored by samples in the FIFO: under 10 pale pink, 10–49 magenta, 50+ red. It's computed once per recording and cached as `<bundle>/lab/cloud-<hash>.npz` (`planelab.cloud`, SPEC P19): a snapshot every 6 frames, so the cloud grows in 0.1 s steps at 60 fps. Your 2,669-frame recording builds in 1.8 s (2 MB), and a frame change then takes < 3 ms.
 - **Scene:** the frame range is 1 … frames (Blender frame = `idx + 1`), fps is the rate ARKit actually delivered, and the resolution is the captured image's. Session events become timeline markers named `PL …`.
+
+**Picking one point** (*3D View › Sidebar (N) › Plane Lab › Points*, SPEC P27). Each layer is a single object, so a click in the viewport selects the whole cloud. To inspect a single point instead, press **Pick Point** and click near a dot, within 20 px. Esc or right-click cancels, and the view can still be orbited and zoomed while picking. The pick is a *feature*: its ARKit id, which the raw point and the averaged point share. The tab then shows, at the current frame:
+- the id, as in `peek.sqlite`'s `point_id`
+- the timeline frames where the id was seen
+- the raw and averaged positions in both ARKit and Blender axes
+- the samples in its FIFO
+- the raw-to-averaged distance
+- the distance from the recorded camera
+
+A sphere marker (`… picked`) sits on the feature and follows it by id as you scrub. It sits on the averaged point, or the raw one before the cloud has it, and hides when the feature is absent. The marker is a normal object, so *N › Item › Location* shows its coordinates too. **Clear** (×) removes it, and re-importing the recording removes it as well. Only visible layers are picked. Averaged points can be picked only when the recording carries the phone's cloud, because the Mac's recompute doesn't keep ids; its raw points still can be.
 
 Importing the same recording again replaces it. Opening a saved `.blend` fills the layers at once. **If the layers stay empty or frozen, the extension is off:** Edit › Preferences › Add-ons, search "Plane Lab", tick it. The user's 48 s recording (2,863 frames) imports in about 0.05 s, and changing frames refreshes the points in about 0.1 ms, measured headless.
 
@@ -126,10 +136,12 @@ PlaneLab/
 │   ├── gate.py       stages 2-3: near/far filter, CurvSurf's motion gate (intended/upstream/off), per-point parallax gate
 │   ├── accumulate.py stage 4: CurvSurf's FeatureCompressor on numpy ring buffers; accumulate(replay, config)
 │   ├── cloud.py      the averaged cloud at any frame: the Mac's recompute (cached in <bundle>/lab/cloud-<hash>.npz) or the phone's rows
+│   ├── pick.py       Blender's Pick Point: the point nearest the mouse on screen, and one feature's report at a frame
 │   ├── writer.py     a minimal schema-v1 writer, used only by synth
 │   ├── cli.py        python -m planelab
 │   └── log.py        silent rotating log file, plus stderr for the CLI
-├── blender/planelab_blender/  the extension: manifest, import operator, scene build, frame handler; vendor/planelab → src/planelab
+├── blender/planelab_blender/  the extension: manifest, import operator, scene build, frame handler, Pick Point, the Plane Lab tab;
+│                     vendor/planelab → src/planelab
 ├── scripts/          build_extension.sh (the zip), replay_blend.py (behind `blend`), pull.sh (phone → Mac → Blender, see the root README),
 │                     cloud_golden.py (the accumulator golden the Swift port is checked against, SPEC T27)
 ├── configs/          default.toml (every setting, commented; tested equal to the code) and recall.toml (overrides only)
@@ -141,7 +153,7 @@ PlaneLab/
 
 ```bash
 ruff check . && ruff format --check .
-pytest --cov=planelab --cov-fail-under=85     # 132 tests incl. headless-Blender ones, about 98 % coverage
+pytest --cov=planelab --cov-fail-under=85     # 140 tests incl. headless-Blender ones, about 98 % coverage
 ```
 
 The contract test reads `../session-format/fixtures/v1/`, written by the Swift recorder, and compares every table with `expected.json` (SPEC S7). The core also runs under Blender's own interpreter:

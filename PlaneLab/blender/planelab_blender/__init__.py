@@ -15,15 +15,19 @@ if _VENDOR not in sys.path:
 
 from planelab.log import setup_logging  # noqa: E402
 
-from . import import_op, layers  # noqa: E402
+from . import import_op, layers, panel, pick_op  # noqa: E402
 
 
 def register() -> None:
     setup_logging()
     layers.register()
     import_op.register()
+    pick_op.register()
+    panel.register()
 
 
 def unregister() -> None:
+    panel.unregister()
+    pick_op.unregister()
     import_op.unregister()
     layers.unregister()

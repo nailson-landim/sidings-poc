@@ -20,8 +20,9 @@ AVERAGED_CLOUD = "averaged_cloud"
 ARKIT_PLANES = "arkit_planes"
 CLOUD_DISPLAY = "PlaneLab cloud display"
 # Points keep a steady size on screen, like CurvSurf's point sprites: radius = size x distance from the recorded camera.
-# 0.003 is about 4.5 px of radius at the recorded focal length (about 1,500 px). A fixed radius vanished at 10 m.
-CLOUD_SIZE = 0.003
+# 0.006 is about 9 px of radius at the recorded focal length (about 1,500 px); P27 doubled P20's 0.003. A fixed radius
+# vanished at 10 m. The Plane Lab panel has a slider per layer.
+CLOUD_SIZE = 0.006
 # Averaged points by samples in their FIFO (CurvSurf's cloud), pale to saturated: young, averaging, well averaged.
 # (label, color, upper bound). Clear of the raw points' yellow and of the ARKit plane colors below.
 CLOUD_MATERIALS: list[tuple[str, tuple[float, float, float], float]] = [
@@ -44,9 +45,15 @@ PLANE_MATERIALS: list[tuple[str, tuple[float, float, float]]] = [
     ("none (vertical)", (0.0, 1.0, 1.0)),
 ]
 MARKER_PREFIX = "PL "
+DISPLAY_MODIFIER = "PlaneLab display"
 POINT_DISPLAY = "PlaneLab point display"
 RAW_POINT_COLOR = (1.0, 0.85, 0.1, 1.0)
-RAW_POINT_SIZE = 0.004
+RAW_POINT_SIZE = 0.008
+SIZE_MAX = 0.05
+# The picked feature (P27): an empty whose sphere keeps about 30 px of radius through the recorded camera.
+PICKED = "picked"
+FEATURE_KEY = "planelab_feature"
+PICK_SIZE = 0.02
 
 
 def collection_name(bundle: Path) -> str:
@@ -183,7 +190,7 @@ def add_raw_points(
     collection.objects.link(points)
     material = bpy.data.materials.get("PlaneLab raw points") or bpy.data.materials.new("PlaneLab raw points")
     material.diffuse_color = RAW_POINT_COLOR
-    modifier = points.modifiers.new("PlaneLab display", "NODES")
+    modifier = points.modifiers.new(DISPLAY_MODIFIER, "NODES")
     modifier.node_group = point_display_group()
     set_inputs(modifier, Material=material, Eye=camera, Size=RAW_POINT_SIZE)
     return points
@@ -198,7 +205,7 @@ def add_averaged_cloud(
     cloud[LAYER_KEY] = AVERAGED_CLOUD
     cloud[SESSION_KEY] = str(bundle)
     collection.objects.link(cloud)
-    modifier = cloud.modifiers.new("PlaneLab display", "NODES")
+    modifier = cloud.modifiers.new(DISPLAY_MODIFIER, "NODES")
     modifier.node_group = cloud_display_group()
     set_inputs(modifier, Eye=camera, Size=CLOUD_SIZE)
     return cloud
@@ -279,6 +286,14 @@ def set_inputs(modifier: bpy.types.NodesModifier, **values: object) -> None:
             modifier[item.identifier] = values[item.name]
 
 
+def input_identifier(modifier: bpy.types.NodesModifier, name: str) -> str | None:
+    """The modifier's key for the group input called ``name`` (``modifier[key]`` is its value)."""
+    for item in modifier.node_group.interface.items_tree if modifier.node_group else ():
+        if item.item_type == "SOCKET" and item.in_out == "INPUT" and item.name == name:
+            return item.identifier
+    return None
+
+
 def existing_group(name: str) -> bpy.types.NodeTree | None:
     """The group of that name, unless it predates the screen-sized points (no Eye input): that one is rebuilt."""
     group = bpy.data.node_groups.get(name)
@@ -299,6 +314,8 @@ def new_points_group(name: str, size: float, material: bool = False) -> bpy.type
     group.interface.new_socket("Eye", in_out="INPUT", socket_type="NodeSocketObject")
     size_socket = group.interface.new_socket("Size", in_out="INPUT", socket_type="NodeSocketFloat")
     size_socket.default_value = size
+    size_socket.min_value = 0.0
+    size_socket.max_value = SIZE_MAX
     size_socket.description = "Point radius per metre of distance from the recorded camera"
     group.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     return group

@@ -15,10 +15,19 @@ PLANELAB = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PLANELAB / "blender"))
 
 import planelab_blender  # noqa: E402
-from planelab_blender.build import CLOUD_MATERIALS, CLOUD_SIZE, plane_material_slot  # noqa: E402
+from planelab_blender import panel, pick_op  # noqa: E402
+from planelab_blender.build import (  # noqa: E402
+    CLOUD_MATERIALS,
+    CLOUD_SIZE,
+    DISPLAY_MODIFIER,
+    RAW_POINT_SIZE,
+    input_identifier,
+    plane_material_slot,
+)
 
 from planelab.axes import lens_from_intrinsics, points_to_blender, pose_to_blender  # noqa: E402
 from planelab.cloud import session_cloud  # noqa: E402
+from planelab.pick import feature_at  # noqa: E402
 from planelab.planes import PlaneTimeline, boundary_world  # noqa: E402
 from planelab.replay import load_replay  # noqa: E402
 from planelab.session import open_session  # noqa: E402
@@ -198,6 +207,74 @@ def check_averaged_cloud(scene: bpy.types.Scene, name: str, bundle: Path) -> Non
     print(f"CLOUD OK ({source}, final {len(timeline.at(frames - 1)[0]) if frames else 0} points)")
 
 
+def looking_at(point: np.ndarray) -> np.ndarray:
+    """World to clip space for a viewport 5 m from ``point`` along +Z, looking down at it (it lands mid-screen)."""
+    view = np.eye(4)
+    view[:3, 3] = -(np.asarray(point, dtype=np.float64) + np.array([0.0, 0.0, 5.0]))
+    near, far = 0.1, 100.0
+    projection = np.array(
+        [
+            [2.0, 0, 0, 0],
+            [0, 2.0, 0, 0],
+            [0, 0, (far + near) / (near - far), 2 * far * near / (near - far)],
+            [0, 0, -1, 0],
+        ]
+    )
+    return projection @ view
+
+
+def check_pick(scene: bpy.types.Scene, name: str, bundle: Path) -> None:
+    """P27: a click on a drawn point picks its feature; the marker follows it by id; the panel reads it."""
+    raw = bpy.data.objects[f"{name} raw points"]
+    cloud = bpy.data.objects[f"{name} averaged cloud"]
+    for obj, size in ((raw, RAW_POINT_SIZE), (cloud, CLOUD_SIZE)):
+        modifier = obj.modifiers[DISPLAY_MODIFIER]
+        check(abs(modifier[input_identifier(modifier, "Size")] - size) < 1e-9, f"{obj.name} size")
+    check(panel.point_layers(scene) == [raw, cloud], "the panel lists both size sliders")
+    check(hasattr(bpy.types, "PLANELAB_PT_points"), "panel registered")
+
+    with open_session(bundle) as session:
+        replay = load_replay(session)
+        timeline, source = session_cloud(session, replay)
+    width, height = scene.render.resolution_x, scene.render.resolution_y
+    frames = [i for i in range(len(replay)) if len(replay.points_at(i))]
+    check(bool(frames), "a frame with raw points")
+    idx = frames[len(frames) // 2]
+    scene.frame_set(idx + 1)
+    middle = (width / 2, height / 2)
+    target = int(replay.ids_at(idx)[0])
+    projection = looking_at(points_to_blender(replay.points_at(idx)[0])[0])
+    picked = pick_op.pick_at(scene, projection, width, height, middle)
+    check(picked == (str(bundle), target), f"picked {picked}, expected feature {target}")
+    check(pick_op.pick_at(scene, projection, width, height, (-500.0, -500.0)) is None, "a click far from any point")
+
+    # Only the averaged layer visible: its points are pickable when the cloud has ids (the phone's), else not.
+    averaged_ids, averaged_points, _ = timeline.ids_at(idx) if source == "phone" else (None, *timeline.at(idx))
+    if len(averaged_points):
+        raw.hide_set(True)
+        projection = looking_at(points_to_blender(averaged_points[0])[0])
+        picked = pick_op.pick_at(scene, projection, width, height, middle)
+        expected = (str(bundle), int(averaged_ids[0])) if averaged_ids is not None else None
+        check(picked == expected, f"averaged pick {picked}, expected {expected}")
+        raw.hide_set(False)
+
+    marker = pick_op.place_marker(bpy.context, str(bundle), target)
+    check(marker.select_get() and bpy.context.view_layer.objects.active == marker, "the marker is selected")
+    for i in sorted({0, idx, len(replay) - 1}):
+        scene.frame_set(i + 1)
+        at = feature_at(replay, timeline, target, i)
+        check(marker.hide_viewport == (at.shown is None), f"marker visibility at idx {i}")
+        if at.shown is not None:
+            check(np.allclose(marker.location, points_to_blender(at.shown)[0], atol=1e-5), f"marker at idx {i}")
+    scene.frame_set(idx + 1)
+    report = panel.picked_report(scene)
+    check(report is not None and report.feature_id == target and report.at.raw is not None, "panel report")
+    bpy.ops.planelab.clear_pick()
+    check(pick_op.picked_marker(scene) is None and panel.picked_report(scene) is None, "clear removes the marker")
+    pick_op.place_marker(bpy.context, str(bundle), target)  # the re-import below must remove it with the collection
+    print(f"PICK OK (feature {target}, {source} cloud)")
+
+
 def main(bundle: Path) -> None:
     planelab_blender.register()
     with open_session(bundle) as session:
@@ -238,6 +315,7 @@ def main(bundle: Path) -> None:
     check_video(scene, camera, replay, bundle)
     check_arkit_planes(scene, name, bundle)
     check_averaged_cloud(scene, name, bundle)
+    check_pick(scene, name, bundle)
     markers = sorted((m.frame, m.name) for m in scene.timeline_markers)
     check(markers == sorted((e.frame_idx + 1, f"PL {e.kind} {e.detail}") for e in events), f"markers {markers}")
 
@@ -245,6 +323,7 @@ def main(bundle: Path) -> None:
     bpy.ops.planelab.import_session(filepath=str(bundle))
     check(len([c for c in bpy.data.collections if c.name.startswith(name)]) == 1, "re-import replaced")
     check(len(scene.timeline_markers) == len(events), "markers replaced")
+    check(pick_op.picked_marker(scene) is None, "re-import removes the pick")
 
     try:
         bpy.ops.planelab.import_session(filepath="/nonexistent/session.sqlite")

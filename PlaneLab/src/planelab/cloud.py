@@ -98,6 +98,17 @@ class CloudTimeline:
         valid, points, samples = self._state(k)
         return self.slot_ids[valid], points[valid], samples[valid]
 
+    def point(self, idx: int, feature_id: int) -> tuple[Float32Array, int] | None:
+        """One feature's averaged point after frame ``idx`` and its samples, or None when it isn't in the cloud."""
+        if self.slot_ids is None:
+            raise ValueError("this timeline has no feature ids (it was built on the Mac)")
+        k = int(np.searchsorted(self.frames, idx, side="right")) - 1
+        slot = int(np.searchsorted(self.slot_ids, np.uint64(feature_id)))
+        if k < 0 or slot == len(self.slot_ids) or int(self.slot_ids[slot]) != feature_id:
+            return None
+        valid, points, samples = self._state(k)
+        return (points[slot], int(samples[slot])) if valid[slot] else None
+
     def _state(self, k: int) -> tuple[npt.NDArray[np.bool_], Float32Array, Int32Array]:
         if self._cache is not None and self._cache_key == k:
             return self._cache

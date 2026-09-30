@@ -1,5 +1,6 @@
 """Layers that follow the current frame (SPEC.md §6): a frame-change handler refills each layer's mesh from data
-cached per recording. Nothing but the camera is keyframed, so scrubbing costs one slice and one mesh write per layer.
+cached per recording, and moves the picked feature's marker. Nothing but the camera is keyframed, so scrubbing costs one
+slice and one mesh write per layer.
 """
 
 import logging
@@ -12,11 +13,22 @@ from bpy.app.handlers import persistent
 
 from planelab.axes import points_to_blender
 from planelab.cloud import CloudTimeline, session_cloud
+from planelab.pick import feature_at
 from planelab.planes import PlaneTimeline, boundary_world
 from planelab.replay import Replay, load_replay
 from planelab.session import SessionError, open_session
 
-from .build import ARKIT_PLANES, AVERAGED_CLOUD, LAYER_KEY, RAW_POINTS, SESSION_KEY, plane_material_slot
+from .build import (
+    ARKIT_PLANES,
+    AVERAGED_CLOUD,
+    FEATURE_KEY,
+    LAYER_KEY,
+    PICK_SIZE,
+    PICKED,
+    RAW_POINTS,
+    SESSION_KEY,
+    plane_material_slot,
+)
 
 log = logging.getLogger(__name__)
 
@@ -85,11 +97,22 @@ def set_planes(mesh: bpy.types.Mesh, timeline: PlaneTimeline, idx: int) -> None:
     mesh.update()
 
 
+def set_marker(marker: bpy.types.Object, data: Loaded, idx: int) -> None:
+    """The picked feature's marker follows it by id: on its averaged point, else its raw one, hidden when neither."""
+    at = feature_at(data.replay, data.cloud, int(marker[FEATURE_KEY]), idx)
+    marker.hide_viewport = at.shown is None
+    if at.shown is not None:
+        marker.location = points_to_blender(at.shown)[0]
+    if at.distance is not None:
+        marker.empty_display_size = PICK_SIZE * at.distance
+
+
 def update_layers(scene: bpy.types.Scene) -> None:
     idx = scene.frame_current - 1
     for obj in scene.objects:
         layer = obj.get(LAYER_KEY)
-        if layer not in (RAW_POINTS, AVERAGED_CLOUD, ARKIT_PLANES) or obj.type != "MESH":
+        expected = "EMPTY" if layer == PICKED else "MESH"
+        if layer not in (RAW_POINTS, AVERAGED_CLOUD, ARKIT_PLANES, PICKED) or obj.type != expected:
             continue
         data = loaded(obj[SESSION_KEY])
         if data is None:
@@ -99,6 +122,8 @@ def update_layers(scene: bpy.types.Scene) -> None:
         elif layer == AVERAGED_CLOUD:
             points, samples = data.cloud.at(idx)
             set_cloud(obj.data, points_to_blender(points), samples)
+        elif layer == PICKED:
+            set_marker(obj, data, idx)
         else:
             set_planes(obj.data, data.planes, idx)
 
