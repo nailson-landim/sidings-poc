@@ -2,13 +2,15 @@
 
 
 **Day wrap-up: [`28_SEP_26-HANDOFF.md`](28_SEP_26-HANDOFF.md)** has everything built, tested and found on 28 Sep, plus the full TODO.
-*Last updated 2026-09-30 after Pick Point and bigger dots (P27). Read this first when resuming; `SPEC.md` has the full detail.*
+*Last updated 2026-09-30 after the scope review (P28). Read this first when resuming; `SPEC.md` has the full detail.*
 
 ## Resume prompt
 
 Paste this into a new session:
 
-> Resume the Plane Lab build from `HANDOFF.md`. Read it, then `SPEC.md` §0, §15, §17 and §18 (tick state), and continue with the first open item under *Next steps*. Keep the working agreements in HANDOFF.md.
+> Resume the Plane Lab build from `HANDOFF.md` and implement everything still open, task by task: T17 → T18 → T19 → T20, Checkpoint 2B, T21 → T22 → T23 (the full Blender spec), Checkpoint 3, then T26. Read HANDOFF.md, then `SPEC.md` §0, §5, §6, §13, §17.4 (up to P28) and §18. Keep the working agreements in HANDOFF.md. Ask me with AskUserQuestion whenever a call is mine.
+
+*(Written 2026-09-30 for a clean context; the longer version the user copied is in that day's session.)*
 
 ## Where things stand
 
