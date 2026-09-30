@@ -26,6 +26,23 @@ enum ARRecordAdapter {
         )
     }
 
+    /// A high-resolution still's pose, camera and image (P29). Runs on whatever queue ARKit delivers the still on.
+    nonisolated static func still(_ frame: ARFrame, frameIndex: Int) -> (meta: StillMeta, image: PixelBufferBox) {
+        let camera = frame.camera
+        let (tracking, reason) = codes(camera.trackingState)
+        let meta = StillMeta(
+            timestamp: frame.timestamp,
+            frameIndex: frameIndex,
+            camera: camera.transform,
+            intrinsics: camera.intrinsics,
+            cameraImageSize: SIMD2(Int(camera.imageResolution.width), Int(camera.imageResolution.height)),
+            exposure: camera.exposureDuration,
+            tracking: TrackingChangeDetector.detail(tracking, reason),
+            exif: StillMeta.exifJSON(frame.exifData)
+        )
+        return (meta, PixelBufferBox(frame.capturedImage))
+    }
+
     /// One `plane_anchor` row. A remove carries only the id (SPEC §3.3).
     static func anchorRecord(_ anchor: ARPlaneAnchor, event: AnchorEvent, frameIndex: Int) -> AnchorRecord {
         guard event != .remove else {
@@ -57,7 +74,7 @@ enum ARRecordAdapter {
         }
     }
 
-    static func codes(_ state: ARCamera.TrackingState) -> (TrackingCode, TrackingReason) {
+    nonisolated static func codes(_ state: ARCamera.TrackingState) -> (TrackingCode, TrackingReason) {
         switch state {
         case .notAvailable: (.notAvailable, .none)
         case .normal: (.normal, .none)

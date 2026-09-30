@@ -70,6 +70,7 @@ struct HUDView: View {
             stat("dropped", "\(recorder.framesDropped)")
             stat("no image", "\(recorder.imagesDropped)")
             stat("marks", "\(recorder.marks)")
+            stat("stills", recorder.stillsFailed > 0 ? "\(recorder.stills) (\(recorder.stillsFailed)✗)" : "\(recorder.stills)")
             stat("MB", String(format: "%.0f", recorder.megabytes))
             stat("free GB", String(format: "%.1f", recorder.freeGB))
         }

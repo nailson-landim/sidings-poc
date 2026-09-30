@@ -22,7 +22,7 @@ xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR \
 
 ## Where code goes
 
-- **`PlaneKit/`**: anything expressible without ARKit or RealityKit (geometry, arbitration, smoothing, throttling, mesh-data generation, and the Plane Lab recorder in `Recording/`). The plane code imports only `simd` and Foundation. `Recording/` may also import AVFoundation, CoreVideo and SQLite3, which all exist on macOS, so the whole write path is tested with `swift test` (`../SPEC.md` L11). Never ARKit, RealityKit or UIKit. Every change here gets Swift Testing cases in `PlaneKit/Tests/PlaneKitTests/`. Tests stay on disk.
+- **`PlaneKit/`**: anything expressible without ARKit or RealityKit (geometry, arbitration, smoothing, throttling, mesh-data generation, and the Plane Lab recorder in `Recording/`). The plane code imports only `simd` and Foundation. `Recording/` may also import AVFoundation, CoreVideo, CoreImage, ImageIO and SQLite3, which all exist on macOS, so the whole write path is tested with `swift test` (`../SPEC.md` L11). Never ARKit, RealityKit or UIKit. Every change here gets Swift Testing cases in `PlaneKit/Tests/PlaneKitTests/`. Tests stay on disk.
 - **`PlaneKit/Sources/PlaneKit/Cloud/`**: the averaged cloud (`../SPEC.md` L12), a port of Plane Lab's accumulator. Plane Lab (Python) is the reference: a change to the rules goes into Python first, then `python scripts/cloud_golden.py` rewrites `session-format/fixtures/cloud/golden.json`, and the Swift golden test must pass again.
 - **`SidingsAR/`**: ARKit/RealityKit/UIKit glue. `PlaneAnchorAdapter` (viewer) and `Recording/ARRecordAdapter` (recorder) are the only places that convert ARKit types into PlaneKit types (`../SPEC.md` §17.4 P13).
 - **`legacy/`**: read-only reference. Don't modify or build it.
@@ -35,6 +35,7 @@ xcodebuild -project SidingsAR.xcodeproj -scheme SidingsAR \
 - **One clock:** `lastFrameTime` (`ARFrame.timestamp`) drives every `Throttle` and `RebuildGate`. Don't mix in `CACurrentMediaTime()`.
 - **Hysteresis counts resolves, not seconds.** Changing `resolveInterval` changes the real-time meaning of `challengerFrames`.
 - **Never retain `ARFrame`s.** Read what you need inside `session(_:didUpdate frame:)`. The recorder copies `capturedImage` into its own pool buffer there and hands only that copy to `SessionWriter`.
+- **Stills (P29) arrive off the delegate.** `captureHighResolutionFrame`'s completion is written as a `@Sendable` closure, so Swift doesn't assume it runs on the main actor (a main-actor closure called from another queue traps at runtime). It only touches thread-safe things: `ARRecordAdapter.still` (`nonisolated`), `StillWriter` and `SessionWriter`. `StillWriter.begin()` allows one still in flight.
 - **The recorder never blocks the delegate.** `SessionWriter.enqueue` takes a lock and hands off to its queue. A full queue drops the frame, and a busy pool logs the frame without an image.
 
 ## Memory rules (v2.1; they fixed a runaway-RAM regression)

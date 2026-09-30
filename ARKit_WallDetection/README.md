@@ -122,6 +122,7 @@ The gap between the origin and the center shows that ARKit anchors a plane where
   - The 6-buffer pixel pool is allocated when Record is tapped (T10). Earlier recordings, with 4 buffers allocated during capture, lost images at frames 5–9.
   - ARKit's plane anchors are recorded too: every add, update and remove callback, stamped with the frame. Planes that already exist when Record is tapped are logged as added at frame 0.
   - **Mark** (flag, while recording) adds a `mark N` event, which becomes a timeline marker in Blender.
+  - **High-resolution stills** (`../SPEC.md` P29, T31), for photogrammetry: with `stillsEnabled` (on), the session runs in ARKit's recommended format for high-resolution frames, and while recording the app asks for a full-sensor still every 0.25 m or 10° of camera motion (at most every 0.25 s, one at a time, only while tracking is normal). Each still is a JPEG (quality 0.92) in `stills/`, in the camera's own orientation, with a line in `stills/stills.jsonl`: its ARKit pose (`camera_to_world`, row by row), intrinsics, sizes, exposure, tracking and EXIF. The red row shows **stills** (failed ones in brackets with ✗), MB includes them, and the Stop line gives the count and size. `session.sqlite` gets a `still` event per still and `stills_saved`, `stills_failed`, `stills_bytes`, `stills_width`, `stills_height` in `meta`.
   - **The averaged cloud is recorded too** (schema v2, `../SPEC.md` T29): Record clears the live cloud, then every 6 recorded frames a `cloud` row holds what changed (a full copy every 50 rows), plus a last row at Stop. `meta.cloud_rows`, `cloud_points` and `cloud_frames_dropped` sum it up, and `planelab info` prints it.
   - Get sessions onto the Mac with `devicectl` (see `CLAUDE.md`), then run `python -m planelab info <bundle>` (`../PlaneLab/`).
 - **Reset:** clears all anchors and tracker state, and restarts tracking.
@@ -246,7 +247,7 @@ ARKit_WallDetection/
 │   ├── PlaneStyle.swift         Colors, opacities, label text
 │   ├── MemoryFootprint.swift    phys_footprint for the HUD
 │   └── Recording/               Plane Lab recorder glue
-│       ├── ARRecordAdapter.swift  ARFrame → FrameRecord (with PlaneAnchorAdapter, the only ARKit → PlaneKit conversions)
+│       ├── ARRecordAdapter.swift  ARFrame → FrameRecord and still metadata (with PlaneAnchorAdapter, the only ARKit → PlaneKit conversions)
 │       └── SessionRecorder.swift  Record/Stop, the capture path, HUD stats, meta; SessionWriter does the writing
 ├── PlaneKit/                    Swift package with no ARKit or RealityKit; tested on the Mac
 │   ├── Sources/PlaneKit/
@@ -264,6 +265,7 @@ ARKit_WallDetection/
 │   │       ├── Constants.swift     RecorderConstants: every recorder setting, written to each session's meta
 │   │       ├── Records.swift       FrameRecord, AnchorRecord, LocationRecord, HeadingRecord, EventRecord
 │   │       ├── RecordingPolicy.swift  StopReason, DiskGuard, TrackingChangeDetector, ImageSkipLog
+│   │       ├── Stills.swift        StillTrigger, StillMeta, StillWriter: high-resolution stills (P29)
 │   │       ├── Packing.swift       Little-endian BLOB layouts (matrices, points, ids) with no simd padding
 │   │       ├── SessionDatabase.swift  session.sqlite: schema v2 (copy of ../session-format/schema_v2.sql; reads v1 too), WAL, seal
 │   │       ├── SessionWriter.swift    One recording bundle off the capture thread: batched commits, frame drops, finish

@@ -113,6 +113,9 @@ The request bundles four parts that can be tested separately. They stay in this 
 20260925-101500.planelab/        one recording (a folder; zipped for transfer)
 ├── session.sqlite                meta, per-frame data, ARKit plane events, session events
 ├── video.mov                     HEVC, one video frame per logged frame
+├── stills/                       high-resolution stills for photogrammetry (P29, T31); absent when off
+│   ├── 000001.jpg …              full-sensor JPEGs in the camera's own orientation, numbered from 1
+│   └── stills.jsonl              one line per saved still: file, t, frame_idx, size, fx/fy/cx/cy, camera_to_world
 └── lab/                          created on the Mac; the phone never writes here
     └── <run-name>/               one Recompute: config.toml + results.sqlite
 ```
@@ -716,6 +719,7 @@ Minor decisions made while planning, under the user's "minor decisions I trust y
 | P26 | **PlaneKit is built optimized in Debug** (`unsafeFlags(["-O"], .when(configuration: .debug))` in `Package.swift`). Xcode's Run installs Debug builds, and the accumulator runs on every frame: 3.2 ms per frame unoptimized against 0.055 ms optimized (Mac). Heat already halves ARKit's rate on the iPhone 13 (R1). The app target stays `-Onone`. Local packages may use unsafe flags; the iOS compile check passes. | Keep the cloud cheap on the phone |
 | P27 | **Pick one point, and bigger dots** (2026-09-30). The user wanted to click a single point and read its coordinates; each layer is one mesh, so a click selected the whole cloud. They chose a pick tool over Edit Mode or per-point objects. One object per point would be about 10,500 averaged points on `20260930-102759`, too many to follow the timeline. The Plane Lab sidebar tab starts here with a *Points* section. **Pick Point** is a modal eyedropper: `planelab.pick.nearest_on_screen` projects the visible layers' current points through the viewport's `perspective_matrix` and takes the nearest within 20 px, the front one on a tie. A pick is a feature id (raw and averaged share it). An empty `… picked` follows it in the frame handler, on the averaged point, else the raw one, hidden when absent, and selected so *N › Item* shows it too. The tab shows the id, the frames seen, raw and averaged positions in ARKit and Blender axes, samples, raw-to-averaged distance and distance from the camera, with frames as timeline frames (idx + 1). Mac-recomputed clouds have no ids, so their averaged points aren't pickable. Dot sizes are doubled from P20 (raw 0.008, averaged 0.006, about 12 and 9 px of radius), with a slider per layer in the tab that sets the modifier's *Size*. | The user's request; picking keeps playback as fast as before |
 | P28 | **Scope of what's left** (user, 2026-09-30). The recorder is closed: T10, T11 and T13 closed, T12 and L9 (GPS) deferred, Checkpoint 2A waived. The Blender spec stays whole: T21–T23 as written, S10 included. T24 is recorded (`20260929-172952`, `20260930-102759`). *Minor, Claude's:* a run fits the phone's recorded cloud when its filter, gate and accumulate settings equal the recording's `const.cloud*`. The two are proven equal (T30), and this skips the accumulator pass. Any other settings recompute on the Mac (E3). The free 3-point model is still built, since it's the cheapest of the three. | The user's answers; the minor part saves time without changing results |
+| P29 | **High-resolution stills for photogrammetry** (user, 2026-09-30: "lets do just that camera capture inclusion … go full throttle on resolution"). After a brainstorm on reconstructing the scene with SfM (COLMAP), the user chose ARKit's `captureHighResolutionFrame` (iOS 16) over 4K video: full-sensor stills with ARKit's pose, while the video stays for Blender. This reopens the recorder for one addition (T31). *Minor, Claude's:* (1) with `stillsEnabled` the session always runs in `recommendedVideoFormatForHighResolutionFrameCapturing`, so Record never reconfigures the camera; the format's size and rate go to `meta` as before, plus `arkit_format_hires_recommended`. (2) A still every 0.25 m or 10° of camera motion, at most every 0.25 s, only while tracking is normal, and one in flight at a time (so at most one full-size image in memory). (3) JPEG at quality 0.92, not HEIC: every photogrammetry tool reads it. (4) A sidecar, not a schema change: `stills/stills.jsonl` holds each still's pose (ARKit's `camera.transform`, row by row, ARKit axes), intrinsics, sizes, exposure, tracking and EXIF; `session.sqlite` gets a `still` event per still and `stills_*` meta rows at Stop. Poses stay in ARKit's convention; the COLMAP conversion is an exporter's job. It folds into a schema version if the experiment earns a place. (5) The iOS 26 `captureHighResolutionFrame(using:)` photo settings aren't used; ARKit's defaults apply. | The user's request; a sidecar keeps the contract, the fixtures and Plane Lab untouched for today's capture |
 
 ### 17.5 Risks found while planning
 
@@ -1067,6 +1071,15 @@ The averaged-cloud layer shows the recorded cloud when the session has one, othe
   - *mem MB:* tops out at about 400 MB (user, 2026-09-30).
   - *fps:* 60.0 delivered on both recordings with the live cloud.
   - *MB/min* (`20260930-102759`, 115.6 s, 10,470 points): the `cloud` rows are 2.2 MB/min, well under P23's 5–11 estimate. `session.sqlite` in total is 12.0 MB/min and `video.mov` 62 MB/min.
+
+### Phase 2D: stills for photogrammetry (P29, added 2026-09-30)
+
+#### T31. High-resolution stills while recording · S · P29
+
+With `RecorderConstants.stillsEnabled`, SidingsAR runs in ARKit's recommended format for high-resolution frames and, while recording, asks `captureHighResolutionFrame` for a still whenever `StillTrigger` says one is due. `StillWriter` encodes it as a JPEG in `stills/` and appends its pose and intrinsics to `stills/stills.jsonl` (§3.1, P29). The HUD counts stills; the Stop line gives their count and size.
+- [x] **Verify:** `swift test` (`StillsTests`: trigger by distance, turn, interval and tracking; JPEG and line written; one still in flight; late stills counted, not written; EXIF kept only where JSON can hold it). The iOS compile check is clean.
+- [ ] **Device + user:** a recording outdoors with stills. Record the still size, stills per minute, fps with the high-res format, *mem MB*, MB/min, and whether stills cause missing images in the video.
+- **Files:** `PlaneKit/Sources/PlaneKit/Recording/{Stills,Constants}.swift`, `SidingsAR/Recording/{SessionRecorder,ARRecordAdapter}.swift`, `SidingsAR/{ARSessionController,HUDView}.swift`
 
 ### Phase 2B: Lab core (Python, Mac only; can start right after T6)
 

@@ -21,6 +21,12 @@ struct RecorderConstantsTests {
         #expect(byKey["const.cloudNormalTrackingOnly"] == "false")
         #expect(byKey["const.cloudMaxIds"] == "100000")
         #expect(byKey["const.cloudZScore"] == "2.0")
+        // High-resolution stills (P29).
+        #expect(byKey["const.stillsEnabled"] == "true")
+        #expect(byKey["const.stillMoveM"] == "0.25")
+        #expect(byKey["const.stillTurnDeg"] == "10.0")
+        #expect(byKey["const.stillMinIntervalS"] == "0.25")
+        #expect(byKey["const.stillJPEGQuality"] == "0.92")
     }
 
     @Test func cloudSettingsFollowTheConstants() {

@@ -87,6 +87,7 @@ final class ARSessionController: NSObject {
         renderer = PlaneRenderer(scene: arView.scene)
         super.init()
         arView.session.delegate = self
+        recorder.session = arView.session
         // Everything we draw is unlit debug geometry: skip post-processing passes and their full-screen buffers.
         arView.renderOptions = [
             .disableMotionBlur, .disableDepthOfField, .disableHDR, .disableCameraGrain,
@@ -148,7 +149,13 @@ final class ARSessionController: NSObject {
         let config = ARWorldTrackingConfiguration()
         config.planeDetection = mode.planeDetection
         config.environmentTexturing = .none
-        logger.info("Running session: mode=\(self.mode.rawValue, privacy: .public) lidar=\(self.isLiDARDevice)")
+        // High-resolution stills (P29) need ARKit's recommended format to get the full sensor resolution.
+        if RecorderConstants.current.stillsEnabled,
+           let format = ARWorldTrackingConfiguration.recommendedVideoFormatForHighResolutionFrameCapturing {
+            config.videoFormat = format
+        }
+        let format = config.videoFormat
+        logger.info("Running session: mode=\(self.mode.rawValue, privacy: .public) lidar=\(self.isLiDARDevice) format=\(Int(format.imageResolution.width))x\(Int(format.imageResolution.height))@\(format.framesPerSecond) hires=\(format.isRecommendedForHighResolutionFrameCapturing)")
         arView.session.run(config, options: options)
     }
 

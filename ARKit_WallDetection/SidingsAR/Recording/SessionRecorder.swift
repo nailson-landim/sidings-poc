@@ -5,8 +5,8 @@ import OSLog
 import PlaneKit
 import UIKit
 
-/// Plane Lab recorder (`../SPEC.md` §4). **Record** writes a `.planelab` bundle (`session.sqlite` + `video.mov`) into
-/// `Documents/Sessions/` while the plane viewer keeps running.
+/// Plane Lab recorder (`../SPEC.md` §4). **Record** writes a `.planelab` bundle (`session.sqlite` + `video.mov`, plus
+/// high-resolution stills in `stills/`, P29) into `Documents/Sessions/` while the plane viewer keeps running.
 ///
 /// Per frame, inside the delegate: copy the pose, intrinsics and points (`ARRecordAdapter`) and the camera image into
 /// a pool buffer, then hand both to `SessionWriter`, which never blocks. The `ARFrame` isn't kept past the call.
@@ -25,8 +25,15 @@ final class SessionRecorder {
     private(set) var lastResult: String?
     /// Marks placed in the current recording.
     private(set) var marks = 0
+    /// High-resolution stills saved and failed in the current recording (P29).
+    private(set) var stills = 0
+    private(set) var stillsFailed = 0
+    /// The session that takes the stills; set by `ARSessionController`.
+    @ObservationIgnored weak var session: ARSession?
 
     @ObservationIgnored private var writer: SessionWriter?
+    @ObservationIgnored private var stillWriter: StillWriter?
+    @ObservationIgnored private var stillTrigger = StillTrigger(constants: .current)
     /// The live cloud whose rows go into this recording (`../SPEC.md` T29, P22, P23).
     @ObservationIgnored private var cloud: LiveCloud?
     @ObservationIgnored private var firstTime: TimeInterval?
@@ -47,6 +54,8 @@ final class SessionRecorder {
                 videoSize: size
             )
             writer = created
+            stillWriter = RecorderConstants.current.stillsEnabled
+                ? try StillWriter(bundle: bundle, quality: RecorderConstants.current.stillJPEGQuality) : nil
             // Record clears the cloud, so the recorded cloud starts empty at frame 0 (P22).
             let constants = RecorderConstants.current
             cloud.startRecording(snapshotEvery: constants.cloudSnapshotEvery, fullEvery: constants.cloudFullEvery) { row in
@@ -67,6 +76,9 @@ final class SessionRecorder {
         imagesDropped = 0
         megabytes = 0
         marks = 0
+        stills = 0
+        stillsFailed = 0
+        stillTrigger.reset()
         lastResult = nil
         statsThrottle.reset()
         tracking = TrackingChangeDetector()
@@ -107,8 +119,35 @@ final class SessionRecorder {
         if let index, let change = tracking.observe(metadata.tracking, metadata.trackingReason) {
             writer.enqueue(EventRecord(frameIndex: index, kind: "tracking", detail: change))
         }
+        if index != nil, let stillWriter,
+           stillTrigger.isDue(time: frame.timestamp, camera: metadata.camera, trackingNormal: metadata.tracking == .normal),
+           let number = stillWriter.begin() {
+            stillTrigger.fired(time: frame.timestamp, camera: metadata.camera)
+            requestStill(number, stills: stillWriter, writer: writer)
+        }
 
         return index
+    }
+
+    /// Asks ARKit for one full-resolution still (P29). The completion may run off the main thread, so it's
+    /// `@Sendable` and touches only the thread-safe writers.
+    private func requestStill(_ number: Int, stills: StillWriter, writer: SessionWriter) {
+        guard let session else {
+            stills.abandon()
+            return
+        }
+        let logger = logger
+        session.captureHighResolutionFrame { @Sendable frame, error in
+            guard let frame else {
+                logger.error("Still \(number) failed: \(error?.localizedDescription ?? "no frame", privacy: .public)")
+                stills.abandon()
+                return
+            }
+            let frameIndex = max(writer.lastFrameIndex, 0)
+            let still = ARRecordAdapter.still(frame, frameIndex: frameIndex)
+            stills.write(number, meta: still.meta, image: still.image)
+            writer.enqueue(EventRecord(frameIndex: frameIndex, kind: "still", detail: StillWriter.fileName(number)))
+        }
     }
 
     /// ARKit plane callbacks (SPEC §4, T11). Callbacks only record: one queued row per plane, stamped with the last
@@ -136,14 +175,19 @@ final class SessionRecorder {
         // The cloud's last row reaches the writer before it stops accepting (a few ms of waiting at most).
         let cloudSummary = cloud?.stopRecording(lastIndex: writer.lastFrameIndex)
         cloud = nil
+        let stillWriter = stillWriter
+        self.stillWriter = nil
         writer.enqueue(EventRecord(frameIndex: max(writer.lastFrameIndex, 0), kind: "record", detail: "stop:\(reason.rawValue)"))
         let name = writer.bundle.lastPathComponent
         Task {
             do {
-                let summary = try await writer.finish(stopReason: reason, meta: cloudSummary?.metaRows ?? [])
-                logger.info("Saved \(name, privacy: .public): \(summary.framesLogged) frames, \(summary.framesWithImage) images, \(summary.framesDropped) dropped")
+                let stillSummary = await stillWriter?.finish()
+                let meta = (cloudSummary?.metaRows ?? []) + (stillSummary?.metaRows ?? [])
+                let summary = try await writer.finish(stopReason: reason, meta: meta)
+                logger.info("Saved \(name, privacy: .public): \(summary.framesLogged) frames, \(summary.framesWithImage) images, \(summary.framesDropped) dropped, \(stillSummary?.saved ?? 0) stills")
                 let reasonNote = reason == .user ? "" : " (stopped: \(reason.rawValue))"
-                lastResult = "Saved \(name): \(summary.framesLogged) frames, \(summary.framesWithImage) images\(reasonNote)"
+                let stillNote = stillSummary.map { ", \($0.saved) stills \($0.width)x\($0.height)" } ?? ""
+                lastResult = "Saved \(name): \(summary.framesLogged) frames, \(summary.framesWithImage) images\(stillNote)\(reasonNote)"
             } catch {
                 logger.error("Finishing \(name, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
                 lastResult = "Saving \(name) failed: \(error.localizedDescription)"
@@ -155,7 +199,10 @@ final class SessionRecorder {
         elapsed = now - (firstTime ?? now)
         frames = writer.lastFrameIndex + 1
         framesDropped = writer.droppedFrames
-        megabytes = Double(Self.size(of: writer.bundle)) / 1_000_000
+        let still = stillWriter?.progress ?? StillSummary()
+        stills = still.saved
+        stillsFailed = still.failed
+        megabytes = Double(Int64(Self.size(of: writer.bundle)) + still.bytes) / 1_000_000
         freeGB = Double(freeBytes ?? 0) / 1_000_000_000
     }
 
@@ -210,6 +257,7 @@ final class SessionRecorder {
                 ("video_height", "\(height)"),
                 ("arkit_format_fps", "\(format.framesPerSecond)"),
                 ("arkit_format_resolution", "\(width)x\(height)"),
+                ("arkit_format_hires_recommended", format.isRecommendedForHighResolutionFrameCapturing ? "1" : "0"),
             ]
         }
         return rows

@@ -40,6 +40,17 @@ public struct RecorderConstants: Sendable, Equatable {
     /// Every this many rows (and the first) is a full copy of the cloud; the others hold changes.
     public var cloudFullEvery = 50
 
+    // High-resolution stills for photogrammetry (P29): full-sensor photos with their pose, in `stills/`.
+    /// Runs the session in ARKit's recommended format for high-resolution frames, and takes stills while recording.
+    public var stillsEnabled = true
+    /// A still when the camera has moved this far, or turned this much, since the last one.
+    public var stillMoveM = 0.25
+    public var stillTurnDeg = 10.0
+    /// Never two stills closer than this in time. One still is in flight at a time as well.
+    public var stillMinIntervalS = 0.25
+    /// JPEG quality, 0 to 1.
+    public var stillJPEGQuality = 0.92
+
     public init() {}
 
     public var cloudSettings: CloudSettings {
