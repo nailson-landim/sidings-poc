@@ -11,6 +11,7 @@ Read [`CONSOLIDATION.md`](CONSOLIDATION.md) first. It holds the product framing,
 | [`CONSOLIDATION.md`](CONSOLIDATION.md) | Living project summary: product, decisions, VIO notes, geometry architecture, MoE model, capture UX, first spike, evaluation, open questions |
 | [`REQUEST.md`](REQUEST.md) | The current request. Earlier ones are in [`docs/REQUEST_1.md`](docs/REQUEST_1.md). |
 | [`SPEC.md`](SPEC.md) | **Plane Lab**: record ARKit sessions in SidingsAR, then replay them and fit planes on the Mac in Python and Blender. Spec, plan (§17) and tasks (§18) in one file; approved 2026-09-28 and being built. |
+| [`PACK.md`](PACK.md) | Moving the work to the NVIDIA Linux box (COLMAP, T33): what to copy, what runs where, setup, and the ARKit → COLMAP pose conversion |
 | [`session-format/`](session-format/) | The recording format's contract: the canonical DDL and a Swift-written fixture that both Swift and Python test against. See its [README](session-format/README.md). |
 | [`PlaneLab/`](PlaneLab/) | The Python side of Plane Lab: session reader and `planelab info` so far. See its [README](PlaneLab/README.md). |
 | [`ARKit_WallDetection/`](ARKit_WallDetection/) | **SidingsAR**, an iOS app that validates what native ARKit plane detection gives us. See its [README](ARKit_WallDetection/README.md). |

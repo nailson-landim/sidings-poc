@@ -44,8 +44,9 @@ Paste this into a new session:
 | T12 Permissions and GPS · T13 Sessions sheet | T12 **deferred** (user, 2026-09-30: GPS not needed for now, L9). T13 **closed** (`pull.sh` gets recordings off the phone). No code for either | — |
 | Checkpoint 2A | **Waived** (user, 2026-09-30) with the recorder tasks | — |
 | T24 Field session 1 (building) | **Recorded** (user, 2026-09-30): `20260929-172952` and `20260930-102759`, iPhone 13. The E2/E3 comparison waits for our planes (T21) | — |
-| **T31 High-resolution stills (P29, 2026-09-30)** | Code done: full-sensor JPEGs with ARKit poses in `stills/` while recording, for an SfM (COLMAP) experiment. First run `20260930-171700`: 123 stills at 4032 × 3024, none failed, **all blurred** (exposure 9.4 ms) | `508167d` |
-| **T32 Exposure cap (P30, 2026-09-30)** | Code done: max exposure 1 ms by default, live in Debug › Max exposure, *exp ms* and *ISO* in the HUD. **Device check open:** does ARKit share the camera, and are the stills sharp? | this commit |
+| **T31 High-resolution stills (P29, 2026-09-30)** | **Done, device-checked.** Full-sensor JPEGs (4032 × 3024) with ARKit poses in `stills/` while recording. First run `20260930-171700`: 123 stills, all blurred (exposure 9.4 ms) | `508167d` |
+| **T32 Exposure cap (P30, 2026-09-30)** | **Done, device-checked** (user: "It made the deal"). `20260930-174033`: ARKit shares the camera, 0.99 ms at ISO 500–1250, predicted blur 1.8 px median, tracking 100 % normal | `e4f388d` |
+| **T33 SfM on the stills (COLMAP)** | Not started. Runs on the NVIDIA Linux box: see `PACK.md` | — |
 | T17–T23, T25, T26 | Not started. T21's ARKit-planes (P17) and averaged-cloud (P19) layers are already done. Next: T17 | — |
 
 The checks were green at `e90e034`:
@@ -57,10 +58,11 @@ The checks were green at `e90e034`:
 ## Waiting on the user
 
 1. **T2 scrub check.** The user opens `~/PlaneLab/spikes/r2/r2_scrub.blend`, presses Numpad 0 to look through the camera, and scrubs and plays. They say whether it feels responsive.
-2. **T32 exposure check.** Before recording, the HUD's *exp ms* should drop to about 1 with *ISO* showing a value (else ARKit didn't share the camera). Then a recording with stills at a normal walk; pull it and check blur, noise and tracking.
-3. **P27 pick check.** In `20260930-102759`'s `replay.blend`, the user runs Pick Point on a few dots, in camera view and in a free view. The marker should land on the clicked dot, and the dot sizes and sliders should feel right. Headless tests can't drive the viewport's `perspective_matrix` or a modal click.
+2. **P27 pick check.** In `20260930-102759`'s `replay.blend`, the user runs Pick Point on a few dots, in camera view and in a free view. The marker should land on the clicked dot, and the dot sizes and sliders should feel right. Headless tests can't drive the viewport's `perspective_matrix` or a modal click.
 
 ## Next steps for Claude
+
+**Moving to the Linux box (2026-09-30):** `PACK.md` says what to copy, what runs where, and how to resume. The next session there starts with **T33** (COLMAP on `20260930-174033`'s stills). The Plane Lab main line below continues after it, on either machine (Python work runs on both; the iOS app only on the Mac).
 
 Scope agreed with the user on 2026-09-30 (SPEC §17.4 P28): the recorder is closed, and the whole Blender spec (T21–T23) stays in. In order:
 1. **T17: RANSAC plane models** (vertical, horizontal and free), with the least-squares refit, the range-scaled τ and collinear rejection.
@@ -86,6 +88,8 @@ Each one is also recorded where it belongs.
 - **The Plane Lab extension can be off in the user's Blender** (found 2026-09-29: the repository was registered, the add-on unticked). Then nothing refreshes and layers show whatever was saved. Check Edit › Preferences › Add-ons first when "nothing shows".
 - **Blender point clouds carry one material.** Set Material ignores its selection on a point cloud, so a per-point color needs one point cloud per color (joined as instances), not one cloud with a material index.
 - **Outdoors** (`20260929-075854`): points to 15.9 m but about 30 cm spread past 10 m; ARKit classified every horizontal plane "seat". Recordings made before the T10 install (all four so far) can't check T10.
+- **Stills need a short exposure more than resolution** (P30). ARKit's auto exposure chose 9.4 ms at ISO 80 in the late afternoon, which blurred every still at walking pace; `ExposureControl` caps it (1 ms by default) through the camera ARKit shares, and ISO rises instead. The morning run's exposure was 0.12 ms, so light decides how much this matters.
+- **`pull.sh` copies folders inside a recording** (`stills/` arrived whole).
 - **This Mac's locale uses a decimal comma.** Run `awk` over `ffprobe` output with `LC_ALL=C`.
 
 ## Working agreements (from the user)

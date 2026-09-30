@@ -1079,7 +1079,7 @@ The averaged-cloud layer shows the recorded cloud when the session has one, othe
 
 With `RecorderConstants.stillsEnabled`, SidingsAR runs in ARKit's recommended format for high-resolution frames and, while recording, asks `captureHighResolutionFrame` for a still whenever `StillTrigger` says one is due. `StillWriter` encodes it as a JPEG in `stills/` and appends its pose and intrinsics to `stills/stills.jsonl` (§3.1, P29). The HUD counts stills; the Stop line gives their count and size.
 - [x] **Verify:** `swift test` (`StillsTests`: trigger by distance, turn, interval and tracking; JPEG and line written; one still in flight; late stills counted, not written; EXIF kept only where JSON can hold it). The iOS compile check is clean.
-- [ ] **Device + user:** a recording outdoors with stills. Record the still size, stills per minute, fps with the high-res format, *mem MB*, MB/min, and whether stills cause missing images in the video.
+- [x] **Device + user:** a recording outdoors with stills. Record the still size, stills per minute, fps with the high-res format, *mem MB*, MB/min, and whether stills cause missing images in the video. *(2026-09-30, `20260930-171700` and `20260930-174033`: 4032 × 3024, 93 and 130 per minute, 0 failed, 2.8–3.6 MB each, so about 360–470 MB/min of stills. Missing video images 8 and 5. The first run held 59.5 fps; the second averaged 51 fps, with 559 frame gaps over 25 ms while the phone reached thermal* serious *(564 frames), the known trigger for 30 Hz; how much the stills add wasn't separated. *mem MB* not reported. `pull.sh` brings `stills/` along: 139 JPEGs plus the index arrived.)*
 - **Files:** `PlaneKit/Sources/PlaneKit/Recording/{Stills,Constants}.swift`, `SidingsAR/Recording/{SessionRecorder,ARRecordAdapter}.swift`, `SidingsAR/{ARSessionController,HUDView}.swift`
 - *First device run (2026-09-30, `20260930-171700`, 79 s, iPhone 13):* the recommended high-res format is the usual 1920 × 1440 at 60 fps; stills are 4032 × 3024 (fx 3035), 123 saved, 0 failed, 3.6 MB each, 93 per minute; 4,714 of 4,722 frames kept their image. **The stills were blurred** by a 9.4 ms exposure (P30).
 
@@ -1087,8 +1087,14 @@ With `RecorderConstants.stillsEnabled`, SidingsAR runs in ARKit's recommended fo
 
 `ExposureCap` (PlaneKit) and `ExposureControl` (app): a live maximum exposure time, default 1 ms, through ARKit's configurable capture device.
 - [x] **Verify:** `swift test` (`ExposureCapTests`: nearest cap, clamping to the format range, re-apply tolerance); the iOS compile check is clean.
-- [ ] **Device + user:** ARKit shares the camera (the HUD's *exp ms* drops to about 1 and *ISO* shows a value); tracking stays normal; the stills are sharp at a normal walking pace. Record ISO, noise and blur.
+- [x] **Device + user:** ARKit shares the camera (the HUD's *exp ms* drops to about 1 and *ISO* shows a value); tracking stays normal; the stills are sharp at a normal walking pace. Record ISO, noise and blur. *(User, 2026-09-30: "It made the deal." `20260930-174033`, 17:40, 64 s, 26 m: `exposure_control = 1`, so **ARKit shares the capture device during world tracking**. Exposure 0.99 ms on every still and video frame, ISO 500 / 800 / 1250 (p10 / p50 / p90), tracking 100 % normal. Predicted blur 1.8 px median, 3.4 px p90, 5.5 px max (was 17.4 / 30.4 / 47.7 at 9.4 ms), with 122 of 139 stills under 3 px at a similar pace (26.6°/s median turning). A 100 % crop shows the stucco grain sharp where the 9.4 ms still smeared it: the plain wall faces now have texture. ISO 800 grain is visible and acceptable.)*
 - **Files:** `PlaneKit/Sources/PlaneKit/Recording/{ExposureCap,Constants}.swift`, `SidingsAR/{ExposureControl,ARSessionController,HUDView}.swift`, `SidingsAR/Recording/SessionRecorder.swift`
+
+#### T33. SfM on the stills (COLMAP, Linux box) · M · P29 · *not started*
+
+On the NVIDIA Linux box (`PACK.md`): export `20260930-174033`'s stills and ARKit poses to a COLMAP model (conversion in `PACK.md` §5), match, and triangulate with the poses frozen ("mode A", D1 kept). Then compare the SfM points with the phone's averaged cloud by distance band (spread and plane residuals at 0–5, 5–8, 8–10, 10+ m). Dense (PatchMatch) after that, if the sparse result earns it.
+- [ ] **Verify:** COLMAP with CUDA runs; the exporter has pytest cases on disk; reprojection error with frozen ARKit poses is reported (under ~1 px means ARKit's poses are good enough as they are).
+- [ ] **Result:** the per-distance comparison, written into §10b of `CONSOLIDATION.md`.
 
 ### Phase 2B: Lab core (Python, Mac only; can start right after T6)
 
