@@ -27,19 +27,22 @@ Paste this into a new session:
 | T8 Blender extension and import (camera, trail, raw points) | Done (headless). The Reload Scripts dev loop waits for the user's OK to add a local repository | this commit |
 | T9 Video behind the camera | Done, S11 confirmed by the user | `f788539` |
 | Checkpoint 1 | **Passed** (user, 2026-09-28): S11 holds, points sit on the video. The user linked `PlaneLab/blender/` as a local extension repository | — |
-| T11 ARKit anchors + Mark | Done, device-checked on 2026-09-28 (`20260928-181436`: 2 planes, 373 anchor rows; "flawless"). Mark not yet tapped on a device | `32fb327`, `12a525c` |
-| T10 Stop reasons, events, low disk, startup images | **Code done (2026-09-29). Device check open:** record, tap Reset mid-recording, then `info` shows `stop: reset` and Blender shows tracking markers. The first T10 recording (`20260929-161400`) lost 3 images at startup, all `no_buffer` (was 5) | `f48458f` |
+| T11 ARKit anchors + Mark | **Closed** (user, 2026-09-30). Device-checked on 2026-09-28; Mark on a device waived | `32fb327`, `12a525c` |
+| T10 Stop reasons, events, low disk, startup images | **Closed** (user, 2026-09-30: done or solved; Reset check waived). Startup images still missing but under S2's 1 %: 6 of 6,901 on `20260930-102759` | `f48458f` |
 | T14 Synthetic sessions | Done (2026-09-29) | this commit |
 | T15 LabConfig and presets | Done (2026-09-29) | this commit |
 | T16 Filter, motion gate, accumulator | Done (2026-09-29). It matches a line-by-line port of CurvSurf's Swift. On real recordings, `upstream` = `off` (every frame) | this commit |
 | Averaged cloud in Blender (T21 part, P19) | Done (2026-09-29): `planelab.cloud` plus an *averaged cloud* layer that grows over the timeline, colored by samples (pink, magenta, red), cached in `lab/cloud-<hash>.npz`. **User check open:** rerun `pull.sh 20260929-161400` (or `planelab blend`), F3 › Reload Scripts, scrub | this commit |
 | **L12 (2026-09-29): CurvSurf's accumulator on the phone, live and recorded** | The user chose "Live cloud + record it". Phase 2C in SPEC §18: T27 Swift accumulator, T28 live cloud in SidingsAR, T29 record it (schema v2), T30 the phone's cloud in Blender | — |
 | T27 Swift accumulator (PlaneKit `Cloud/`) | Done (2026-09-29): matches the Python golden (`session-format/fixtures/cloud/golden.json`) to 4.8e-7 m; 0.055 ms per frame; PlaneKit built `-O` in Debug (P26) | this commit |
-| T28 Live cloud in SidingsAR | Code done (2026-09-29). **Device check open:** the cloud grows while scanning; the user reports *mem MB* and fps | this commit |
+| T28 Live cloud in SidingsAR | **Done** (user, 2026-09-30): the cloud grows; *mem MB* tops out at about 400 MB; 60.0 fps delivered | this commit |
 | T29 Record the cloud: schema v2 | Done (2026-09-29): `cloud` table, v2 fixture (v1 kept and still read on both sides), `info`/`peek` show the phone's cloud | this commit |
-| T30 The phone's cloud in Blender + equality check | Code done (2026-09-29): Blender shows the recorded cloud, `info --check-cloud` (run by `pull.sh`) compares it with the Mac's recompute; equal on a Swift-recorded fixture. **Device check open** with T28: record on the phone, pull, the check says equal | this commit |
+| T30 The phone's cloud in Blender + equality check | **Done** (2026-09-30): `20260930-102759` equal, 1151/1151 rows, 0.0010 mm; the user confirmed Blender. Checkpoint 2C passed (cloud rows 2.2 MB/min) | this commit |
 | **P27 (2026-09-30): Pick Point and bigger dots** | Code done. The Plane Lab sidebar tab (*Points*) has **Pick Point**: click a dot, and a marker follows that feature id while the tab shows its raw and averaged coordinates (ARKit and Blender), samples, frames seen and distance. Dots are twice as big, with a size slider per layer. On `20260930-102759` a pick takes 0.5 ms and a frame change 1.2 ms. `replay.blend` has been rebuilt. **User check open:** F3 › Reload Scripts, N › Plane Lab, Pick Point, click a dot, scrub | this commit |
-| T12, T13, T17–T26 | Not started. T21's ARKit-planes (P17) and averaged-cloud (P19) layers are already done. Next: T17 RANSAC | — |
+| T12 Permissions and GPS · T13 Sessions sheet | T12 **deferred** (user, 2026-09-30: GPS not needed for now, L9). T13 **closed** (`pull.sh` gets recordings off the phone). No code for either | — |
+| Checkpoint 2A | **Waived** (user, 2026-09-30) with the recorder tasks | — |
+| T24 Field session 1 (building) | **Recorded** (user, 2026-09-30): `20260929-172952` and `20260930-102759`, iPhone 13. The E2/E3 comparison waits for our planes (T21) | — |
+| T17–T23, T25, T26 | Not started. T21's ARKit-planes (P17) and averaged-cloud (P19) layers are already done. Next: T17 | — |
 
 The checks were green at `e90e034`:
 - `swift test`: 68 tests in 10 suites.
@@ -54,17 +57,13 @@ The checks were green at `e90e034`:
 
 ## Next steps for Claude
 
-In order:
-1. ~~**T8: Blender extension and import (camera and raw points).**~~ Done.
-   - Build the P6 layout: `PlaneLab/blender/planelab_blender/`, with `vendor/planelab` as a symlink to `src/planelab`.
-   - Write `scripts/build_extension.sh`, which copies the real core into a staging folder and builds the zip.
-   - Set up the local-repository dev loop.
-   - Import: the scene fps is the **delivered** rate, `session.delivered_fps()`, not `video_fps` (§3.4). Convert ARKit to Blender axes as `(x, −z, y)`. Set lens, shift and resolution from the intrinsics. The raw-points layer comes from a frame-change handler. `event` rows become markers.
-   - Headless smoke test on `session-format/fixtures/v1/tiny.planelab`.
-2. ~~**T9: video behind the camera.**~~ Code and automated check done; The clip starts at timeline frame `1 + session.first_image_idx()`. Blender drops a leading gap and keeps later ones (§15 R2). The user then checks S11 on the T7 recording (`~/PlaneLab/sessions/20260928-160746.planelab`): the points sit on the image.
-3. **Checkpoint 1:** the user reviews. Then comes Phase 2, with two parallel tracks:
-   - **2A**, recorder, T10–T13: stop reasons and events, ARKit anchors, permissions and location, the Sessions sheet.
-   - **2B**, lab core, T14–T20: synth, config, gate and accumulator, RANSAC, search, tracker, pipeline.
+Scope agreed with the user on 2026-09-30 (SPEC §17.4 P28): the recorder is closed, and the whole Blender spec (T21–T23) stays in. In order:
+1. **T17: RANSAC plane models** (vertical, horizontal and free), with the least-squares refit, the range-scaled τ and collinear rejection.
+2. **T18: sequential search and extents.**
+3. **T19: plane tracker.**
+4. **T20: pipeline, `results.sqlite`, `run` and `export`.** Fit on the phone's cloud when the run's cloud settings match the recording's, else recompute (P28). Watch S9: ~1,150 fits on a 10k-point cloud for 116 s of recording.
+5. **Checkpoint 2B**, then **T21, T22 and T23** in full, then Checkpoint 3.
+6. **T24 analysis** on `20260929-172952` and `20260930-102759` (E2 per wall, E3), **T25** when the user records the far site, then **T26** and the final checkpoint.
 
 ## Facts learned the hard way
 

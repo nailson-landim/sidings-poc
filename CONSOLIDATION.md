@@ -158,7 +158,8 @@ A simple regressor trained on ground-truth houses outputs ±X%. **The validation
 - **Outdoors, first recording** (Sep 29, 2026, iPhone 13 without LiDAR, `20260929-075854`, 51 s, 60 Hz):
   - **Range:** `rawFeaturePoints` reached **15.9 m**, past the ~10 m limit CurvSurf described for the old behaviour. Only 0.9 % of sightings were past 10 m (704 past 12 m, in 421 of 3,092 frames), and the 51 features averaged past 10 m spread by **about 30 cm RMS** against about 1 cm up close. Far points exist but are noisy. This is early evidence for E1, not the controlled standoff test.
   - **Classification:** ARKit labelled **all 6 horizontal planes outdoors "seat"** (6 adds, 2,067 updates, 2 removes). On a non-LiDAR phone outdoors, plane classification isn't something to rely on.
-- **Still open:** 60 Hz over a full 5-minute session, whether recording itself pushes the phone into *serious*, and memory growth (300 → 440 MB in a minute in the spike). These are checked at Plane Lab Checkpoint 2A.
+- **Recording plus the live averaged cloud** (Sep 30, 2026, iPhone 13, `20260930-102759`, 116 s): a steady **60 Hz**, tracking 100 % normal. Memory tops out at about 400 MB (user).
+- **Still open:** 60 Hz over a full 5-minute session, and whether recording itself pushes the phone into *serious*. These belong to Plane Lab Checkpoint 2A.
 
 ## 11. Document index
 

@@ -18,7 +18,7 @@ This one file holds the spec for the Plane Lab and, once the spec is approved, i
 | L6 | The Python core depends only on **numpy and the standard library**, so it loads inside Blender with no extra installs. Internal data and config use frozen dataclasses, not Pydantic. | Decided (user, 2026-09-28, §16 Q2) |
 | L7 | **Blender is the main interface.** Every CLI command also has a Blender operator. Recompute runs the CLI in a separate process with Blender's own Python (§6). The CLI stays for scripting. | Decided (user, 2026-09-28), including how Recompute runs |
 | L8 | **Settings live in one place and are saved with the data.** Recorder settings live in `Constants.swift` (edit, rebuild) and are written to `meta` in every session. Lab settings live in TOML and are written into each run's `results.sqlite`. | Decided (user, 2026-09-28) |
-| L9 | **First-launch permissions: Camera and Location.** GPS fixes and compass heading are logged in the session (§3.3, §4). | Decided (user, 2026-09-28) |
+| L9 | **First-launch permissions: Camera and Location.** GPS fixes and compass heading are logged in the session (§3.3, §4). | **Deferred** (user, 2026-09-30: GPS "not needed for now"). The `location` and `heading` tables stay in the schema, empty. |
 | L10 | **E1 moves to a second site.** The `BUILDING_SAMPLE.png` building has no open ground for a 10–15 m standoff. | Decided (user, 2026-09-28) |
 | L11 | **All recorder logic goes into the `PlaneKit` target** (records, SQLite writer, video writer, constants). No separate `SessionLog` target. | Decided (user, 2026-09-28, §16 Q3) |
 | L12 | **The phone runs CurvSurf's accumulator live and records it** (amends L1). SidingsAR shows the growing averaged cloud while scanning, like CurvSurf's app, and writes it into the session (`cloud` table, schema v2), so Blender can show exactly what the phone had. Plane fitting and tracking stay on the Mac. | Decided (user, 2026-09-29: "Live cloud + record it", after "there are too few points … lets guarantee the iOS app have such thing") |
@@ -571,8 +571,8 @@ def fit_vertical_plane(
 | S1 | A 5-minute recording completes. *mem MB* stays within ±50 MB of its value 30 s after Record. |
 | S2 | ≥ 99 % of `ARFrame`s are logged. ≤ 1 % of images are dropped at the default video format. The plane viewer stays as smooth as without recording. |
 | S3 | Force-quit the app during a recording: `session.sqlite` still opens with all frames up to about 1 s before the kill, and `video.mov` plays up to its last fragment. |
-| S4 | A session appears in the Files app and in Finder, and AirDrops as a `.zip` that `planelab info` reads. |
-| S5 | After a fresh install, the first launch asks for Camera, then Location, and shows each one's status. With Location denied, recording still works and `meta` says `denied`. With it granted, a session has `location` rows at about 1 Hz and `heading` rows. Every `RecorderConstants` value is in `meta`. |
+| ~~S4~~ | ~~A session appears in the Files app and in Finder, and AirDrops as a `.zip` that `planelab info` reads.~~ *Dropped with T13 (user, 2026-09-30); `pull.sh` gets recordings off the phone.* |
+| ~~S5~~ | After a fresh install, the first launch asks for Camera, then Location, and shows each one's status. With Location denied, recording still works and `meta` says `denied`. With it granted, a session has `location` rows at about 1 Hz and `heading` rows. Every `RecorderConstants` value is in `meta`. *Deferred with T12 (user, 2026-09-30).* |
 | S6 | `swift test` is green with the new recording tests, including the video writer. The `xcodebuild` compile check has no new warnings. |
 
 **Format and core** (automated on the Mac):
@@ -715,6 +715,7 @@ Minor decisions made while planning, under the user's "minor decisions I trust y
 | P25 | **Accumulator memory:** 1.2 KB per live id (100 samples × 12 B), in chunks of 4,096 ids, so up to about 120 MB at CurvSurf's 100 000 ids. The cloud grows by design (an exception to R10's flat memory), bounded by `cloudMaxIds`; *mem MB* is read at Checkpoint 2C, and `cloudMaxIds` comes down if it hurts. | Fidelity to CurvSurf first, measured before changing it |
 | P26 | **PlaneKit is built optimized in Debug** (`unsafeFlags(["-O"], .when(configuration: .debug))` in `Package.swift`). Xcode's Run installs Debug builds, and the accumulator runs on every frame: 3.2 ms per frame unoptimized against 0.055 ms optimized (Mac). Heat already halves ARKit's rate on the iPhone 13 (R1). The app target stays `-Onone`. Local packages may use unsafe flags; the iOS compile check passes. | Keep the cloud cheap on the phone |
 | P27 | **Pick one point, and bigger dots** (2026-09-30). The user wanted to click a single point and read its coordinates; each layer is one mesh, so a click selected the whole cloud. They chose a pick tool over Edit Mode or per-point objects. One object per point would be about 10,500 averaged points on `20260930-102759`, too many to follow the timeline. The Plane Lab sidebar tab starts here with a *Points* section. **Pick Point** is a modal eyedropper: `planelab.pick.nearest_on_screen` projects the visible layers' current points through the viewport's `perspective_matrix` and takes the nearest within 20 px, the front one on a tie. A pick is a feature id (raw and averaged share it). An empty `… picked` follows it in the frame handler, on the averaged point, else the raw one, hidden when absent, and selected so *N › Item* shows it too. The tab shows the id, the frames seen, raw and averaged positions in ARKit and Blender axes, samples, raw-to-averaged distance and distance from the camera, with frames as timeline frames (idx + 1). Mac-recomputed clouds have no ids, so their averaged points aren't pickable. Dot sizes are doubled from P20 (raw 0.008, averaged 0.006, about 12 and 9 px of radius), with a slider per layer in the tab that sets the modifier's *Size*. | The user's request; picking keeps playback as fast as before |
+| P28 | **Scope of what's left** (user, 2026-09-30). The recorder is closed: T10, T11 and T13 closed, T12 and L9 (GPS) deferred, Checkpoint 2A waived. The Blender spec stays whole: T21–T23 as written, S10 included. T24 is recorded (`20260929-172952`, `20260930-102759`). *Minor, Claude's:* a run fits the phone's recorded cloud when its filter, gate and accumulate settings equal the recording's `const.cloud*`. The two are proven equal (T30), and this skips the accumulator pass. Any other settings recompute on the Mac (E3). The free 3-point model is still built, since it's the cheapest of the three. | The user's answers; the minor part saves time without changing results |
 
 ### 17.5 Risks found while planning
 
@@ -925,7 +926,9 @@ The recording's `video.mov` becomes the camera's background movie clip, starting
 
 ### Phase 2A: Recorder complete (Swift, device)
 
-#### T10. Stop reasons, events and low disk · M · §4 R3, R9
+#### ~~T10. Stop reasons, events and low disk~~ · M · §4 R3, R9 · **closed**
+
+> **Closed by the user (2026-09-30):** done or solved; the Reset device check is waived. The startup image loss is smaller but not gone: `20260929-172952` lost 8 images and `20260930-102759` lost 6 of 6,901 (all `no_buffer`, 0.09 %), inside S2's 1 % budget.
 
 *Follow-up from T7:* warm the pixel pool when Record is tapped. The first recording lost images for frames 5–9, and ARKit skipped two frames at frame 10 (a 50 ms gap), most likely while the first pool buffers were being allocated during capture.
 
@@ -950,7 +953,9 @@ The recording stops and finalizes, with the matching `stop_reason`, on any of: R
 - **Depends on:** T7.
 - **Files:** `PlaneKit/Sources/PlaneKit/Recording/RecordingPolicy.swift`, `PlaneKit/Tests/PlaneKitTests/Recording/RecordingPolicyTests.swift`, `SidingsAR/Recording/SessionRecorder.swift`, `SidingsAR/ARSessionController.swift`, `SidingsAR/ContentView.swift` (scene phase)
 
-#### T11. ARKit plane anchors and the Mark button · S · E2 input
+#### ~~T11. ARKit plane anchors and the Mark button~~ · S · E2 input · **closed**
+
+> **Closed by the user (2026-09-30):** device-checked on 2026-09-28; tapping Mark on a device is waived.
 
 Anchor callbacks enqueue `add`, `update` and `remove` rows through `ARRecordAdapter`, stamped with the last logged frame. They do nothing else, per the SidingsAR invariant. *(Should)* **Mark** adds an `event` row.
 
@@ -965,7 +970,9 @@ Anchor callbacks enqueue `add`, `update` and `remove` rows through `ARRecordAdap
 - **Depends on:** T7.
 - **Files:** `SidingsAR/Recording/{ARRecordAdapter,SessionRecorder}.swift`, `SidingsAR/ARSessionController.swift`, `SidingsAR/HUDView.swift`, `PlaneKit/Tests/PlaneKitTests/Recording/PackingTests.swift`
 
-#### T12. Permissions screen and location logging · M · S5
+#### ~~T12. Permissions screen and location logging~~ · M · S5 · **deferred**
+
+> **Deferred by the user (2026-09-30):** GPS isn't needed for now (L9). No code was written; S5 is out of this phase.
 
 At launch, while Camera or Location is undecided, a `PermissionsView` shows before the AR view: Camera, then Location While In Use, each with a status row, plus **Open Settings** when one is denied. While recording, a `LocationFeed` (`CLLocationManager`, best accuracy, no distance filter, 1° heading filter) sends `LocationRecord` and `HeadingRecord` rows to the writer. `meta` gets `location_auth` and `location_accuracy`. The logic for which screen to show is pure PlaneKit code (P10).
 
@@ -975,7 +982,9 @@ At launch, while Camera or Location is undecided, a `PermissionsView` shows befo
 - **Depends on:** T7.
 - **Files:** `SidingsAR/Recording/{PermissionsView,LocationFeed}.swift`, `SidingsAR/ContentView.swift`, `PlaneKit/Sources/PlaneKit/Recording/PermissionState.swift` and its tests, `project.pbxproj` (`NSLocationWhenInUseUsageDescription`)
 
-#### T13. Sessions sheet · S · S4
+#### ~~T13. Sessions sheet~~ · S · S4 · **closed**
+
+> **Closed by the user (2026-09-30).** No sheet was built; recordings leave the phone with `PlaneLab/scripts/pull.sh` (`devicectl`).
 
 A sheet lists the recordings (date, duration, size, device, read from `meta`), with **Share** (zipped through `NSFileCoordinator` `.forUploading`) and **Delete**. Reading the summary is PlaneKit code, tested on the fixture.
 
@@ -985,7 +994,9 @@ A sheet lists the recordings (date, duration, size, device, read from `meta`), w
 - **Depends on:** T7.
 - **Files:** `SidingsAR/Recording/SessionsView.swift`, `SidingsAR/HUDView.swift`, `PlaneKit/Sources/PlaneKit/Recording/SessionSummary.swift` and its tests
 
-#### Checkpoint 2A: recorder on the device
+#### ~~Checkpoint 2A: recorder on the device~~ · **waived**
+
+> **Waived by the user (2026-09-30)** with T10–T13. What was measured instead: *mem MB* tops out at about 400 MB, and 60.0 fps held for 116 s with the live cloud (Checkpoint 2C).
 
 - [ ] **Conditions (from T3):** phone unplugged and cool. First a 1-minute plain-viewing baseline without Rec, noting HUD fps and *mem MB*. Then note the fps just before Record. This separates ARKit's own 30 Hz and the viewer's memory growth from what recording adds.
 - [ ] **Device (S1):** 5 minutes on the iPhone 13, with *mem MB* staying within ±50 MB of its value 30 s after Record.
@@ -1018,7 +1029,7 @@ The user asked for CurvSurf's accumulator in the iOS app, live and recorded (L12
 
 - [x] Unit tests: `LiveCloud` gives the accumulator's cloud, never blocks the caller, and `clear()` empties it.
 - **Code (2026-09-29):** `LiveCloud` (a display copy every 6 frames, at most 120 frames waiting, drops counted), `CloudMesh` (squares of half-size 0.003 × distance, 3 bands, at most 40,000 points drawn), `SidingsAR/CloudRenderer.swift` (one entity, one part and `UnlitMaterial` per band, generated once and then `replace(with:)`, rebuilt every 0.2 s). The controller copies each frame once (`ARRecordAdapter.frameRecord`) for both the cloud and the recorder. HUD: a **cloud** count and an **Averaged cloud** toggle in Debug. 99 Swift tests; the iOS compile check is clean.
-- [ ] **Device:** the cloud grows while scanning, like CurvSurf's app. *mem MB* and fps before and after (the user reports).
+- [x] **Device:** the cloud grows while scanning, like CurvSurf's app. *mem MB* and fps before and after (the user reports). *(User, 2026-09-30: fine, *mem MB* tops out at about 400 MB. `20260929-172952` and `20260930-102759` both delivered 60.0 fps with the live cloud on.)*
 - **Verify:** `swift test`; compile check; device run.
 - **Depends on:** T27.
 - **Files:** `PlaneKit/Sources/PlaneKit/Cloud/LiveCloud.swift`, `SidingsAR/CloudRenderer.swift`, `SidingsAR/ARSessionController.swift`, `SidingsAR/HUDView.swift`
@@ -1046,13 +1057,16 @@ The averaged-cloud layer shows the recorded cloud when the session has one, othe
 - **Code (2026-09-29):** `planelab.cloud.session_cloud` picks the phone's rows when there are any, else the Mac's recompute with `config_from_meta` (the recording's `const.cloud*` settings); the import reports which (`… averaged points at the end (phone cloud)`). `compare_recorded` replays the recording through the Mac's accumulator and compares every row: ids, sample counts, largest position difference. `planelab info --check-cloud` prints it, and `pull.sh` passes the flag.
   - **End to end without a phone:** `session-format/fixtures/cloud/recorded.planelab` is the golden frames recorded by the real Swift path (`SessionWriter` + `LiveCloud`, with a 4-sample FIFO, 50 ids and a full copy every 2 rows). Python reads its settings back from `meta`, and the recompute matches: 5/5 rows, 18 points, largest difference 0.0003 mm. With the default settings instead, it doesn't, so the check can tell. The Blender smoke test shows the phone source on it. Full rows are now sorted by id so a recording is reproducible.
   - 108 Swift tests, 132 Python tests (98 %).
-- [ ] **Device + user:** a new recording shows the phone's cloud in Blender, and `info` reports it equal to the recompute.
+- [x] **Device + user:** a new recording shows the phone's cloud in Blender, and `info` reports it equal to the recompute. *(2026-09-30, `20260930-102759`: equal, 1151/1151 rows, largest difference 0.0010 mm, 10,470 points at the end; the user confirmed Blender.)*
 - **Depends on:** T28, T29.
 - **Files:** `PlaneLab/blender/planelab_blender/layers.py`, `PlaneLab/src/planelab/{cloud,info}.py`
 
 #### Checkpoint 2C
 
-- [ ] **User:** the cloud grows on the phone during a real scan, and the same cloud plays back in Blender. *mem MB*, fps and MB/min are recorded here (P23, P25).
+- [x] **User:** the cloud grows on the phone during a real scan, and the same cloud plays back in Blender. *mem MB*, fps and MB/min are recorded here (P23, P25).
+  - *mem MB:* tops out at about 400 MB (user, 2026-09-30).
+  - *fps:* 60.0 delivered on both recordings with the live cloud.
+  - *MB/min* (`20260930-102759`, 115.6 s, 10,470 points): the `cloud` rows are 2.2 MB/min, well under P23's 5–11 estimate. `session.sqlite` in total is 12.0 MB/min and `video.mov` 62 MB/min.
 
 ### Phase 2B: Lab core (Python, Mac only; can start right after T6)
 
@@ -1221,6 +1235,8 @@ Panel properties generated from `LabConfig`, TOML load and save, and **Recompute
 #### T24. Field session 1: the `BUILDING_SAMPLE.png` building · E2, E3 · S14 (part)
 
 The user records the building from under 5 m on the iPhone 13, then on the 13 Pro. In Blender:
+
+> **Recorded (user, 2026-09-30):** `20260929-172952` (74 s) and `20260930-102759` (116 s), both on the iPhone 13, with the phone's cloud. No 13 Pro pass. The comparisons below wait for our planes (T21).
 - **E2:** for each wall, the first frame with an ARKit plane, compared with our first frame.
 - The upper-storey points, 8–10 m up.
 - **E3:** all four gate modes and `recall.toml`, compared.
@@ -1232,6 +1248,8 @@ The user records the building from under 5 m on the iPhone 13, then on the 13 Pr
 #### T25. Field session 2: the open-standoff site · E1 · S14 (part)
 
 The user picks the site (L10) and records from 10–15 m and farther on the iPhone 13. The per-frame point-range p50 / p95 / max show whether points reach past ~10 m.
+
+*(2026-09-30: the recording can happen any time. `planelab info` and `peek` already give the percentiles; only reading them per frame in the panel waits for T21.)*
 
 - [ ] **User:** the range percentiles are read in Blender, and the ~65 m claim is confirmed or not.
 - [ ] Findings are in `CONSOLIDATION.md` §10b.
